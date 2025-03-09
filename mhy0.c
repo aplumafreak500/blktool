@@ -252,7 +252,7 @@ int extract_mhy0(uint8_t* in_buf, const char* filename, uint8_t** _next_mhy0) {
 			free(hdr_buf);
 			return -1;
 		}
-		fwrite(&s_cab, sizeof(s_cab), 1, file);
+		fwrite(&s_cab, sizeof(cab_serialized_t), 1, file);
 		fclose(file);
 		file = NULL;
 		cab_off += 0x113;
@@ -399,7 +399,7 @@ int pack_mhy0(const char* in_filename, FILE* out_fp) {
 		snprintf(filenameBuf, 1024, "%s.cab%d.hdr", in_filename, i);
 		infp2 = fopen(filenameBuf, "rb");
 		if (infp2 != NULL) {
-			fread(&s_cab[i], sizeof(s_cab), 1, infp2);
+			fread(&s_cab[i], sizeof(cab_serialized_t), 1, infp2);
 			fclose(infp2);
 			infp2 = NULL;
 		}
