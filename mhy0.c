@@ -412,6 +412,7 @@ int pack_mhy0(const char* in_filename, FILE* out_fp) {
 		}
 		s_cab[i].blk_off = cab_blk_off;
 		s_cab[i].blk_sz = cab_blk_sz;
+		cab_blk_off += cab_blk_sz;
 	}
 	FILE* tmp_blk_fp;
 	snprintf(filenameBuf, 1024, "%s.blocks", in_filename);
