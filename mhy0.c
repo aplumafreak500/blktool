@@ -391,11 +391,13 @@ int pack_mhy0(const char* in_filename, FILE* out_fp) {
 		fseek(infp[i], 0, SEEK_END);
 		cab_blk_sz = ftell(infp[i]);
 		fseek(infp[i], 0, SEEK_SET);
+		// TODO start move outside the loop
 		cab_blk_cnt = cab_blk_sz / 0x20000;
 		if ((cab_blk_sz % 0x20000) != 0) {
 			cab_blk_cnt++;
 		}
 		blk_cnt += cab_blk_cnt;
+		// end
 		snprintf(filenameBuf, 1024, "%s.cab%d.hdr", in_filename, i);
 		infp2 = fopen(filenameBuf, "rb");
 		if (infp2 != NULL) {
@@ -448,12 +450,10 @@ int pack_mhy0(const char* in_filename, FILE* out_fp) {
 			cab_blk_off = 0;
 			blk_sz = s_cab[j].blk_sz;
 		}
-#if 0
-		else if (cab_blk_off > s_cab[j].blk_sz) {
+		else if (cab_blk_off + 0x20000 >= s_cab[j].blk_sz) {
 			cab_blk_off = 0;
 			blk_sz = s_cab[j].blk_sz % 0x20000;
 		}
-#endif
 		else {
 			blk_sz = 0x20000;
 			cab_blk_off += blk_sz;
