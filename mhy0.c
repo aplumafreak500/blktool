@@ -223,6 +223,18 @@ int extract_mhy0(uint8_t* in_buf, const char* filename, uint8_t** _next_mhy0) {
 		return ret;
 	}
 	uint32_t cab_cnt = unshuffleInt(hdr_buf);
+	pack_serialized_t s_pack;
+	memcpy(s_pack.key, in_buf + 8, 32);
+	s_pack.cab_cnt = cab_cnt;
+	snprintf(filenameBuf, 1024, "%s.hdr", filename);
+	file = fopen(filenameBuf, "wb");
+	if (file == NULL) {
+		fprintf(stderr, "Can't open file %s: %s\n", filenameBuf, strerror(errno));
+		return -1;
+	}
+	fwrite(&s_pack, sizeof(s_pack), 1, file);
+	fclose(file);
+	file = NULL;
 	uint32_t cab_off = 6;
 	int cab_flag;
 	uint32_t cab_blk_off, cab_blk_sz, blk_cnt, blk_off, blk_dec_sz, blk_cmp_sz;
@@ -252,7 +264,7 @@ int extract_mhy0(uint8_t* in_buf, const char* filename, uint8_t** _next_mhy0) {
 			free(hdr_buf);
 			return -1;
 		}
-		fwrite(&s_cab, sizeof(cab_serialized_t), 1, file);
+		fwrite(&(s_cab[i]), sizeof(cab_serialized_t), 1, file);
 		fclose(file);
 		file = NULL;
 		cab_off += 0x113;
@@ -298,18 +310,6 @@ int extract_mhy0(uint8_t* in_buf, const char* filename, uint8_t** _next_mhy0) {
 		blk_data_off += blk_dec_sz;
 		total_sz += blk_cmp_sz;
 	}
-	pack_serialized_t s_pack;
-	memcpy(s_pack.key, in_buf + 8, 32);
-	s_pack.cab_cnt = cab_cnt;
-	snprintf(filenameBuf, 1024, "%s.hdr", filename);
-	file = fopen(filenameBuf, "wb");
-	if (file == NULL) {
-		fprintf(stderr, "Can't open file %s: %s\n", filenameBuf, strerror(errno));
-		return -1;
-	}
-	fwrite(&s_pack, sizeof(s_pack), 1, file);
-	fclose(file);
-	file = NULL;
 	for (i = 0; i < cab_cnt; i++) {
 		cab_blk_off = s_cab[i].blk_off;
 		cab_blk_sz = s_cab[i].blk_sz;
@@ -448,11 +448,12 @@ int pack_mhy0(const char* in_filename, FILE* out_fp) {
 			cab_blk_off = 0;
 			blk_sz = s_cab[j].blk_sz;
 		}
-		// TODO is this correct for mhy0 files with multiple cabs?
+#if 0
 		else if (cab_blk_off > s_cab[j].blk_sz) {
 			cab_blk_off = 0;
 			blk_sz = s_cab[j].blk_sz % 0x20000;
 		}
+#endif
 		else {
 			blk_sz = 0x20000;
 			cab_blk_off += blk_sz;
@@ -488,7 +489,7 @@ int pack_mhy0(const char* in_filename, FILE* out_fp) {
 		free(hdr_buf);
 		return -1;
 	}
-#if 0
+#if 1
 	memset(hdr_buf, 0, hdr_sz);
 	memset(cmp_buf, 0, cmp_sz);
 #endif
