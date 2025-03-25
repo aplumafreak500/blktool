@@ -426,7 +426,7 @@ static unsigned int ec2b_main(int argc, const char** argv) {
 		genNewEc2b(&out_ec2b, key, data, &seed, !new_seed);
 		fwrite(&out_ec2b, sizeof(ec2b_t), 1, out_fp);
 		fclose(out_fp);
-		fprintf(stderr, "Generated new ec2b %s with seed 0x%016lx\n", out_file, seed);
+		fprintf(stderr, "Generated new ec2b %s with seed 0x%016lx\n", output_to_input ? in_file : out_file, seed);
 		return 0;
 	}
 	// ec2b_usage();
