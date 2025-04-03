@@ -446,7 +446,7 @@ int pack_mhy0(const char* in_filename, FILE* out_fp) {
 			// TODO is the number allowed to carry or does only the lower byte wrap around?
 			*(uint32_t*) (&cmp_buf[0]) = htole32(0xdadadada + i);
 		}
-		if (s_cab[j].blk_sz < 0x20000) {
+		if (s_cab[j].blk_sz <= 0x20000) {
 			cab_blk_off = 0;
 			blk_sz = s_cab[j].blk_sz;
 		}
