@@ -64,6 +64,7 @@ static unsigned int blk_main(unsigned int argc, const char** argv) {
 	uint8_t* buf;
 	size_t bufSz;
 	if (strncasecmp(mode, "encrypt", 8) == 0) {
+		unsigned int hasSeed = 0;
 		if (seed_file != NULL) {
 			seed_fp = fopen(seed_file, "rb");
 		}
@@ -71,6 +72,7 @@ static unsigned int blk_main(unsigned int argc, const char** argv) {
 			fread(&seed, sizeof(seed), 1, seed_fp);
 			fclose(seed_fp);
 			fprintf(stderr, "Read from seed file %s\n", seed_file);
+			hasSeed = 1;
 		}
 		else {
 			getrandom(&seed, sizeof(seed) - sizeof(uint16_t), 0);
@@ -85,13 +87,16 @@ static unsigned int blk_main(unsigned int argc, const char** argv) {
 		}
 		fread(buf, bufSz, 1, in_fp);
 		fclose(in_fp);
+		if (!hasSeed) seed.blkSz = bufSz <= 2048 ? bufSz : 2048;
+		seed.blkSz = be16toh(seed.blkSz) & ~7;
+		seed.seed = be64toh(seed.seed);
 		fprintf(stderr, "Read from input file %s\n", in_file);
-		fprintf(stderr, "\t(key1 hex: %016lx%016lx key2 hex: %016lx%016lx seed size: %hu seed: 0x%016lx)\n", be64toh(((uint64_t*) seed.key)[0]), be64toh(((uint64_t*) seed.key)[1]), be64toh(((uint64_t*) seed.key)[2]), be64toh(((uint64_t*) seed.key)[3]), be16toh(seed.blkSz), be64toh(seed.seed));
-		encrypt_blk0(buf, bufSz, be16toh(seed.blkSz), seed.key, be64toh(seed.seed));
+		fprintf(stderr, "\t(key1 hex: %016lx%016lx key2 hex: %016lx%016lx seed size: %hu seed: 0x%016lx)\n", be64toh(((uint64_t*) seed.key)[0]), be64toh(((uint64_t*) seed.key)[1]), be64toh(((uint64_t*) seed.key)[2]), be64toh(((uint64_t*) seed.key)[3]), seed.blkSz, seed.seed);
+		encrypt_blk0(buf, bufSz, seed.blkSz, seed.key, seed.seed);
 		hdr.magic = htobe32(0x626c6b00);
 		hdr.version = htole32(16);
 		memcpy(hdr.key1, seed.key, 32);
-		hdr.blkSz = htole16(be16toh(seed.blkSz));
+		hdr.blkSz = htole16(seed.blkSz);
 		fwrite(&hdr, sizeof(hdr), 1, out_fp);
 		fwrite(buf, bufSz, 1, out_fp);
 		fclose(out_fp);
