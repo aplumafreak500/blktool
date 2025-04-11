@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: MPL-2.0
+# ©2025 Alex Pensinger (ArcticLuma113)
+# Released under the terms of the MPLv2, which can be viewed at https://mozilla.org/MPL/2.0/
+
+SRC = blktool.c blk.c mhy0.c ec2b.c mhycrypt.c mt19937-64.c lz4.c
+TGT = blktool
+OBJ = $(SRC:%.c=%.o)
+CC := gcc
+CFLAGS := -O2 -g
+LDFLAGS := 
+
+.PHONY: all clean
+.SUFFIXES:
+
+all: $(TGT)
+
+clean:
+	rm -f $(OBJ) $(TGT)
+
+%.o: %.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(TGT): $(OBJ)
+	$(CC) $(LDFLAGS) -o $@ $(OBJ)
