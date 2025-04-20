@@ -4,6 +4,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <endian.h>
 #include "mhycrypt.h"
 #include "blk.h"
 
@@ -128,10 +129,10 @@ void decrypt_blk0(uint8_t* buf, size_t sz, size_t seedSz, uint8_t* key, uint64_t
 	size_t _sz = (seedSz <= 4096) ? seedSz : 4096;
 	unsigned int i;
 	for (i = 0; i < (_sz / sizeof(uint64_t)); i++) {
-		seed ^= _buf[i];
+		seed ^= le64toh(_buf[i]);
 	}
-	seed ^= _key[0];
-	seed ^= _key[1];
+	seed ^= le64toh(_key[0]);
+	seed ^= le64toh(_key[1]);
 	if (_seed != NULL) *_seed = seed;
 	genXorpadFromSeed(seed, out, 4096, 0, 0);
 	xorCrypt(buf, sz, out, 4096);
@@ -146,12 +147,12 @@ void encrypt_blk0(uint8_t* buf, size_t sz, size_t seedSz, uint8_t* key, uint64_t
 	size_t _sz = (seedSz <= 4096) ? seedSz : 4096;
 	unsigned int i;
 	for (i = 0; i < (_sz / sizeof(uint64_t)); i++) {
-		_seed ^= _buf[i];
+		_seed ^= le64toh(_buf[i]);
 	}
 	_seed ^= 0x567ba22babb08098;
-	_seed ^= _key[1];
+	_seed ^= le64toh(_key[1]);
 	_seed ^= seed;
-	_key[0] = _seed;
+	_key[0] = htole64(_seed);
 	xorCrypt(key, 16, blkXorKey, 16);
 	aesUnscrambleKey(key, blkAesRoundKeys);
 	blkUnscrambleKey(key);

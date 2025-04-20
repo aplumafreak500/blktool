@@ -35,13 +35,13 @@ void xorKeyFromEc2b(const ec2b_t* in, uint8_t* out) {
 	const uint64_t* key = (const uint64_t*) _key;
 	const uint64_t* data = (const uint64_t*) in->data;
 	uint64_t seed = ~0xceac3b5a867837ac;
-	seed ^= key[0];
-	seed ^= key[1];
+	seed ^= le64toh(key[0]);
+	seed ^= le64toh(key[1]);
 	unsigned int i;
 	for (i = 0; i < 256; i++) {
-		seed ^= data[i];
+		seed ^= le64toh(data[i]);
 	}
-	fprintf(stderr, "ec2b seed 0x%016lx\n", seed);
+	fprintf(stderr, "ec2b seed 0x%016llx\n", (unsigned long long) seed);
 	genXorpadFromSeed(seed, out, 4096, 0, 0);
 }
 
@@ -72,22 +72,22 @@ void genNewEc2b(ec2b_t* out, uint8_t* key, uint8_t* data, uint64_t* seed, unsign
 	if (seed != NULL) {
 		if (getNewSeed) {
 			newSeed = ~0xceac3b5a867837ac;
-			newSeed ^= _key[0];
-			newSeed ^= _key[1];
+			newSeed ^= le64toh(_key[0]);
+			newSeed ^= le64toh(_key[1]);
 			for (i = 0; i < 256; i++) {
-				newSeed ^= _data[i];
+				newSeed ^= le64toh(_data[i]);
 			}
 			*seed = newSeed;
 		}
 		else {
 			newSeed = ~0;
 			for (i = 0; i < 256; i++) {
-				newSeed ^= _data[i];
+				newSeed ^= le64toh(_data[i]);
 			}
 			newSeed ^= *seed;
-			newSeed ^= _key[1];
+			newSeed ^= le64toh(_key[1]);
 			newSeed ^= 0xceac3b5a867837ac;
-			_key[0] = newSeed;
+			_key[0] = htole64(newSeed);
 		}
 	}
 	xorCrypt(newKey, 16, ec2bXorKey, 16);

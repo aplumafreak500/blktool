@@ -406,10 +406,13 @@ int pack_mhy0(const char* in_filename, FILE* out_fp) {
 			infp2 = NULL;
 		}
 		else {
+#ifndef NDEBUG
+			memset(&s_cab[i], 0, sizeof(s_cab[i]));
+#endif
 			uint64_t cab_name_buf[2];
 			// TODO actually random, or an MD2/4/5 sum (and if so, of what)?
 			getrandom(cab_name_buf, sizeof(uint64_t) * 2, 0);
-			snprintf(s_cab[i].name, 0x104, "CAB-%016lx%016lx", htobe64(cab_name_buf[0]), htobe64(cab_name_buf[1]));
+			snprintf(s_cab[i].name, 0x104, "CAB-%016llx%016llx", (unsigned long long) htobe64(cab_name_buf[0]), (unsigned long long) htobe64(cab_name_buf[1]));
 			s_cab[i].flag = 0;
 		}
 		s_cab[i].blk_off = cab_blk_off;
@@ -489,7 +492,7 @@ int pack_mhy0(const char* in_filename, FILE* out_fp) {
 		free(hdr_buf);
 		return -1;
 	}
-#if 1
+#ifndef NDEBUG
 	memset(hdr_buf, 0, hdr_sz);
 	memset(cmp_buf, 0, cmp_sz);
 #endif

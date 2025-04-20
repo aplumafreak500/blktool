@@ -69,6 +69,9 @@ static unsigned int blk_main(unsigned int argc, const char** argv) {
 			seed_fp = fopen(seed_file, "rb");
 		}
 		if (seed_fp != NULL) {
+#ifndef NDEBUG
+			memset(&seed, 0, sizeof(seed));
+#endif
 			fread(&seed, sizeof(seed), 1, seed_fp);
 			fclose(seed_fp);
 			fprintf(stderr, "Read from seed file %s\n", seed_file);
@@ -91,7 +94,7 @@ static unsigned int blk_main(unsigned int argc, const char** argv) {
 		seed.blkSz = be16toh(seed.blkSz) & ~7;
 		seed.seed = be64toh(seed.seed);
 		fprintf(stderr, "Read from input file %s\n", in_file);
-		fprintf(stderr, "\t(key1 hex: %016lx%016lx key2 hex: %016lx%016lx seed size: %hu seed: 0x%016lx)\n", be64toh(((uint64_t*) seed.key)[0]), be64toh(((uint64_t*) seed.key)[1]), be64toh(((uint64_t*) seed.key)[2]), be64toh(((uint64_t*) seed.key)[3]), seed.blkSz, seed.seed);
+		fprintf(stderr, "\t(key1 hex: %016llx%016llx key2 hex: %016llx%016llx seed size: %hu seed: 0x%016llx)\n", (unsigned long long) be64toh(((uint64_t*) seed.key)[0]), (unsigned long long) be64toh(((uint64_t*) seed.key)[1]), (unsigned long long) be64toh(((uint64_t*) seed.key)[2]), (unsigned long long) be64toh(((uint64_t*) seed.key)[3]), seed.blkSz, (unsigned long long) seed.seed);
 		encrypt_blk0(buf, bufSz, seed.blkSz, seed.key, seed.seed);
 		hdr.magic = htobe32(0x626c6b00);
 		hdr.version = htole32(16);
@@ -101,7 +104,7 @@ static unsigned int blk_main(unsigned int argc, const char** argv) {
 		fwrite(buf, bufSz, 1, out_fp);
 		fclose(out_fp);
 		fprintf(stderr, "Wrote to output file %s\n", out_file);
-		fprintf(stderr, "\t(key1 hex: %016lx%016lx key2 hex: %016lx%016lx seed size: %hu)\n", be64toh(((uint64_t*) seed.key)[0]), be64toh(((uint64_t*) seed.key)[1]), be64toh(((uint64_t*) seed.key)[2]), be64toh(((uint64_t*) seed.key)[3]), be16toh(seed.blkSz));
+		fprintf(stderr, "\t(key1 hex: %016llx%016llx key2 hex: %016llx%016llx seed size: %hu)\n", (unsigned long long) be64toh(((uint64_t*) seed.key)[0]), (unsigned long long) be64toh(((uint64_t*) seed.key)[1]), (unsigned long long) be64toh(((uint64_t*) seed.key)[2]), (unsigned long long) be64toh(((uint64_t*) seed.key)[3]), seed.blkSz);
 		return 0;
 	}
 	else if (strncasecmp(mode, "decrypt", 8) == 0) {
@@ -126,12 +129,12 @@ static unsigned int blk_main(unsigned int argc, const char** argv) {
 			return -1;
 		}
 		uint64_t seed_in;
-		fprintf(stderr, "\t(key1 hex: %016lx%016lx key2 hex: %016lx%016lx seed size: %hu)\n", be64toh(((uint64_t*) hdr.key1)[0]), be64toh(((uint64_t*) hdr.key1)[1]), be64toh(((uint64_t*) hdr.key2)[0]), be64toh(((uint64_t*) hdr.key2)[1]), le16toh(hdr.blkSz));
+		fprintf(stderr, "\t(key1 hex: %016llx%016llx key2 hex: %016llx%016llx seed size: %hu)\n", (unsigned long long) be64toh(((uint64_t*) hdr.key1)[0]), (unsigned long long) be64toh(((uint64_t*) hdr.key1)[1]), (unsigned long long) be64toh(((uint64_t*) hdr.key2)[0]), (unsigned long long) be64toh(((uint64_t*) hdr.key2)[1]), le16toh(hdr.blkSz));
 		decrypt_blk0(buf, bufSz, le16toh(hdr.blkSz), hdr.key1, &seed_in, NULL);
 		fwrite(buf, bufSz, 1, out_fp);
 		fclose(out_fp);
 		fprintf(stderr, "Wrote to output file %s\n", out_file);
-		fprintf(stderr, "\t(key1 hex: %016lx%016lx key2 hex: %016lx%016lx seed size: %hu seed: 0x%016lx)\n", be64toh(((uint64_t*) hdr.key1)[0]), be64toh(((uint64_t*) hdr.key1)[1]), be64toh(((uint64_t*) hdr.key2)[0]), be64toh(((uint64_t*) hdr.key2)[1]), le16toh(hdr.blkSz), seed_in);
+		fprintf(stderr, "\t(key1 hex: %016llx%016llx key2 hex: %016llx%016llx seed size: %hu seed: 0x%016llx)\n", (unsigned long long) be64toh(((uint64_t*) hdr.key1)[0]), (unsigned long long) be64toh(((uint64_t*) hdr.key1)[1]), (unsigned long long) be64toh(((uint64_t*) hdr.key2)[0]), (unsigned long long) be64toh(((uint64_t*) hdr.key2)[1]), le16toh(hdr.blkSz), (unsigned long long) seed_in);
 		if (seed_file != NULL) {
 			seed_fp = fopen(seed_file, "wb");
 			if (seed_fp != NULL) {
@@ -286,7 +289,7 @@ static unsigned int ec2b_main(int argc, const char** argv) {
 		genNewEc2b(&ec2b, NULL, NULL, &seed, 1);
 		fwrite(&ec2b, sizeof(ec2b), 1, out_fp);
 		fclose(out_fp);
-		fprintf(stderr, "Generated new ec2b %s with seed 0x%016lx\n", out_file, seed);
+		fprintf(stderr, "Generated new ec2b %s with seed 0x%016llx\n", out_file, (unsigned long long) seed);
 		return 0;
 	}
 	else if (strncasecmp(mode_s, "edit", 4) == 0) {
@@ -431,7 +434,7 @@ static unsigned int ec2b_main(int argc, const char** argv) {
 		genNewEc2b(&out_ec2b, key, data, &seed, !new_seed);
 		fwrite(&out_ec2b, sizeof(ec2b_t), 1, out_fp);
 		fclose(out_fp);
-		fprintf(stderr, "Generated new ec2b %s with seed 0x%016lx\n", output_to_input ? in_file : out_file, seed);
+		fprintf(stderr, "Generated new ec2b %s with seed 0x%016llx\n", output_to_input ? in_file : out_file, (unsigned long long) seed);
 		return 0;
 	}
 	// ec2b_usage();

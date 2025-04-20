@@ -293,6 +293,9 @@ void genXorpadFromSeed(uint64_t seed, uint8_t* _xorpad, size_t sz, unsigned int 
 		if (be) {
 			r = htobe64(r);
 		}
+		else {
+			r = htole64(r);
+		}
 		xorpad[i] = r;
 	}
 }
