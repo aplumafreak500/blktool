@@ -12,6 +12,7 @@
 #include <assert.h>
 #include <sys/random.h>
 #include "lz4.h"
+#include "lz4hc.h"
 #include "mhy0.h"
 
 static const uint8_t gf256exp[256] = {
@@ -463,7 +464,8 @@ int pack_mhy0(const char* in_filename, FILE* out_fp) {
 		}
 		blocks[i].dec_sz = blk_sz;
 		fread(dec_buf, 0x20000, 1, infp[j]);
-		ret = LZ4_compress_default((const char*) dec_buf, (char*) (cmp_buf + 12), blk_sz, 0x4fff4);
+		//ret = LZ4_compress_default((const char*) dec_buf, (char*) (cmp_buf + 12), blk_sz, 0x4fff4);
+		ret = LZ4_compress_HC((const char*) dec_buf, (char*) (cmp_buf + 12), blk_sz, 0x4fff4, 12);
 		if (ret < 0) {
 			fprintf(stderr, "Can't compress block %d\n", i);
 			return -1;
@@ -512,7 +514,8 @@ int pack_mhy0(const char* in_filename, FILE* out_fp) {
 		shuffleUint(hdr_buf + blk_off + 6, blocks[i].dec_sz);
 		blk_off += 13;
 	}
-	ret = LZ4_compress_default((const char*) hdr_buf, (char*) (cmp_buf + 0x2f), hdr_sz, cmp_sz - 0x2f);
+	//ret = LZ4_compress_default((const char*) hdr_buf, (char*) (cmp_buf + 0x2f), hdr_sz, cmp_sz - 0x2f);
+	ret = LZ4_compress_HC((const char*) hdr_buf, (char*) (cmp_buf + 0x2f), hdr_sz, cmp_sz - 0x2f, 12);
 	if (ret < 0) {
 		fprintf(stderr, "Can't compress header\n");
 		return -1;
