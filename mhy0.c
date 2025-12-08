@@ -185,11 +185,13 @@ typedef struct {
 	uint32_t blk_off;
 	uint32_t blk_sz;
 	uint8_t flag;
+	uint8_t extra[5];
 } __attribute__((packed)) cab_serialized_t;
 
 typedef struct {
 	uint8_t key[0x20];
 	uint32_t cab_cnt;
+	uint8_t extra[7];
 } __attribute__((packed)) pack_serialized_t;
 
 int extract_mhy0(uint8_t* in_buf, const char* filename, uint8_t** _next_mhy0) {
@@ -227,6 +229,14 @@ int extract_mhy0(uint8_t* in_buf, const char* filename, uint8_t** _next_mhy0) {
 	pack_serialized_t s_pack;
 	memcpy(s_pack.key, in_buf + 8, 32);
 	s_pack.cab_cnt = cab_cnt;
+	s_pack.extra[0] = in_buf[0x28];
+	s_pack.extra[1] = in_buf[0x2c];
+	s_pack.extra[2] = in_buf[0x2d];
+	s_pack.extra[3] = hdr_buf[1];
+	s_pack.extra[4] = hdr_buf[3];
+	uint32_t blk_cnt = unshuffleInt(hdr_buf + 6 + (0x113 * cab_cnt));
+	s_pack.extra[5] = hdr_buf[7 + (0x113 * cab_cnt)];
+	s_pack.extra[6] = hdr_buf[9 + (0x113 * cab_cnt)];
 	snprintf(filenameBuf, 1024, "%s.hdr", filename);
 	file = fopen(filenameBuf, "wb");
 	if (file == NULL) {
@@ -238,7 +248,7 @@ int extract_mhy0(uint8_t* in_buf, const char* filename, uint8_t** _next_mhy0) {
 	file = NULL;
 	uint32_t cab_off = 6;
 	int cab_flag;
-	uint32_t cab_blk_off, cab_blk_sz, blk_cnt, blk_off, blk_dec_sz, blk_cmp_sz;
+	uint32_t cab_blk_off, cab_blk_sz, blk_off, blk_dec_sz, blk_cmp_sz;
 	uint32_t data_off = 8 + hdr_sz;
 	uint32_t blk_data_off = 0;
 	size_t total_sz = data_off;
@@ -258,6 +268,11 @@ int extract_mhy0(uint8_t* in_buf, const char* filename, uint8_t** _next_mhy0) {
 		s_cab[i].flag = cab_flag;
 		s_cab[i].blk_off = cab_blk_off;
 		s_cab[i].blk_sz = cab_blk_sz;
+		s_cab[i].extra[0] = hdr_buf[cab_off + 0x107];
+		s_cab[i].extra[1] = hdr_buf[cab_off + 0x109];
+		s_cab[i].extra[2] = hdr_buf[cab_off + 0x10c];
+		s_cab[i].extra[3] = hdr_buf[cab_off + 0x110];
+		s_cab[i].extra[4] = hdr_buf[cab_off + 0x111];
 		snprintf(filenameBuf, 1024, "%s.cab%d.hdr", filename, i);
 		file = fopen(filenameBuf, "wb");
 		if (file == NULL) {
@@ -276,9 +291,9 @@ int extract_mhy0(uint8_t* in_buf, const char* filename, uint8_t** _next_mhy0) {
 		free(hdr_buf);
 		return -1;
 	}
-	blk_cnt = unshuffleInt(hdr_buf + 6 + (0x113 * cab_cnt));
 	blk_off = (0x113 * cab_cnt) + 12;
 	blk_data_off = 0;
+	uint8_t blk_key_buf[17];
 	for (i = 0; i < blk_cnt; i++) {
 		blk_cmp_sz = unshuffleInt(hdr_buf + blk_off);
 		blk_dec_sz = unshuffleUint(hdr_buf + blk_off + 6);
@@ -296,7 +311,13 @@ int extract_mhy0(uint8_t* in_buf, const char* filename, uint8_t** _next_mhy0) {
 			free(hdr_buf);
 			return -1;
 		}
-		fwrite(in_buf + data_off, 12, 1, file);
+		memcpy(blk_key_buf, in_buf + data_off, 12);
+		blk_key_buf[12] = hdr_buf[blk_off + 1];
+		blk_key_buf[13] = hdr_buf[blk_off + 3];
+		blk_key_buf[14] = hdr_buf[blk_off + 6];
+		blk_key_buf[15] = hdr_buf[blk_off + 10];
+		blk_key_buf[16] = hdr_buf[blk_off + 11];
+		fwrite(blk_key_buf, 17, 1, file);
 		fclose(file);
 		file = NULL;
 		ret = LZ4_decompress_safe((const char*) (in_buf + data_off + 12), (char*) data_buf + blk_data_off, blk_cmp_sz - 12, blk_dec_sz);
@@ -335,6 +356,7 @@ int extract_mhy0(uint8_t* in_buf, const char* filename, uint8_t** _next_mhy0) {
 typedef struct {
 	uint32_t cmp_sz;
 	uint32_t dec_sz;
+	uint8_t extra[5];
 } block_mem_t;
 
 int pack_mhy0(const char* in_filename, FILE* out_fp) {
@@ -368,6 +390,7 @@ int pack_mhy0(const char* in_filename, FILE* out_fp) {
 		fprintf(stderr, "Assuming 1 cab file present\n");
 		getrandom(&(s_pack.key[4]), 28, 0);
 		s_pack.cab_cnt = 1;
+		memset(s_pack.extra, 0, 7);
 		// TODO true for all mhy0 files?
 		*(uint32_t*) (&s_pack.key[0]) = htole32(0xdadadad9);
 #endif
@@ -415,6 +438,7 @@ int pack_mhy0(const char* in_filename, FILE* out_fp) {
 			getrandom(cab_name_buf, sizeof(uint64_t) * 2, 0);
 			snprintf(s_cab[i].name, 0x104, "CAB-%016llx%016llx", (unsigned long long) htobe64(cab_name_buf[0]), (unsigned long long) htobe64(cab_name_buf[1]));
 			s_cab[i].flag = 0;
+			memset(s_cab[i].extra, 0, 5);
 		}
 		s_cab[i].blk_off = cab_blk_off;
 		s_cab[i].blk_sz = cab_blk_sz;
@@ -436,20 +460,24 @@ int pack_mhy0(const char* in_filename, FILE* out_fp) {
 	cab_blk_off = 0;
 	j = 0;
 	ssize_t written = 0;
+	uint8_t blk_key_buf[17];
 	for (i = 0; i < blk_cnt; i++) {
 		snprintf(filenameBuf, 1024, "%s.blk%d.key", in_filename, i);
 		infp2 = fopen(filenameBuf, "rb");
 		if (infp2 != NULL) {
-			fread(cmp_buf, 12, 1, infp2);
+			fread(blk_key_buf, 17, 1, infp2);
 			fclose(infp2);
 			infp2 = NULL;
 		}
 		else {
-			getrandom(cmp_buf + 4, 8, 0);
+			getrandom(blk_key_buf + 4, 8, 0);
 			// TODO true for all blocks?
 			// TODO is the number allowed to carry or does only the lower byte wrap around?
-			*(uint32_t*) (&cmp_buf[0]) = htole32(0xdadadada + i);
+			*(uint32_t*) (&blk_key_buf[0]) = htole32(0xdadadada + i);
+			memset(blk_key_buf + 12, 0, 5);
 		}
+		memcpy(cmp_buf, blk_key_buf, 12);
+		memcpy(blocks[i].extra, blk_key_buf + 12, 5);
 		if (s_cab[j].blk_sz <= 0x20000) {
 			cab_blk_off = 0;
 			blk_sz = s_cab[j].blk_sz;
@@ -499,19 +527,33 @@ int pack_mhy0(const char* in_filename, FILE* out_fp) {
 	memset(cmp_buf, 0, cmp_sz);
 #endif
 	shuffleInt(hdr_buf, cab_cnt);
+	hdr_buf[1] = s_pack.extra[3];
+	hdr_buf[3] = s_pack.extra[4];
 	uint32_t cab_off = 6;
 	for (i = 0; i < cab_cnt; i++) {
 		memcpy(hdr_buf + cab_off, s_cab[i].name, 0x104);
 		hdr_buf[cab_off + 0x105] = s_cab[i].flag;
 		shuffleInt(hdr_buf + cab_off + 0x106, s_cab[i].blk_off);
 		shuffleUint(hdr_buf + cab_off + 0x10c, s_cab[i].blk_sz);
+		hdr_buf[cab_off + 0x107] = s_cab[i].extra[0];
+		hdr_buf[cab_off + 0x109] = s_cab[i].extra[1];
+		hdr_buf[cab_off + 0x10c] = s_cab[i].extra[2];
+		hdr_buf[cab_off + 0x110] = s_cab[i].extra[3];
+		hdr_buf[cab_off + 0x111] = s_cab[i].extra[4];
 		cab_off += 0x113;
 	}
 	shuffleInt(hdr_buf + 6 + (0x113 * cab_cnt), blk_cnt);
+	hdr_buf[7 + (0x113 * cab_cnt)] = s_pack.extra[5];
+	hdr_buf[9 + (0x113 * cab_cnt)] = s_pack.extra[6];
 	uint32_t blk_off = (0x113 * cab_cnt) + 12;
 	for (i = 0; i < blk_cnt; i++) {
 		shuffleInt(hdr_buf + blk_off, blocks[i].cmp_sz);
 		shuffleUint(hdr_buf + blk_off + 6, blocks[i].dec_sz);
+		hdr_buf[blk_off + 1] = blocks[i].extra[0];
+		hdr_buf[blk_off + 3] = blocks[i].extra[1];
+		hdr_buf[blk_off + 6] = blocks[i].extra[2];
+		hdr_buf[blk_off + 10] = blocks[i].extra[3];
+		hdr_buf[blk_off + 11] = blocks[i].extra[4];
 		blk_off += 13;
 	}
 	//ret = LZ4_compress_default((const char*) hdr_buf, (char*) (cmp_buf + 0x2f), hdr_sz, cmp_sz - 0x2f);
@@ -524,6 +566,9 @@ int pack_mhy0(const char* in_filename, FILE* out_fp) {
 	((uint32_t*) cmp_buf)[0] = htobe32(0x6d687930);
 	((uint32_t*) cmp_buf)[1] = htole32(ret + 0x27);
 	memcpy(cmp_buf + 8, s_pack.key, 32);
+	cmp_buf[0x28] = s_pack.extra[0];
+	cmp_buf[0x2c] = s_pack.extra[1];
+	cmp_buf[0x2d] = s_pack.extra[2];
 	shuffleUint(cmp_buf + 0x28, hdr_sz);
 	mhy0_encrypt(cmp_buf + 8, 1);
 	ssize_t out_sz = fwrite(cmp_buf, 1, ret + 0x2f, out_fp);
