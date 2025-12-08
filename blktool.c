@@ -30,6 +30,38 @@ static void mhy0_usage() {
 	fprintf(stderr, "mode can be `pack` or `unpack`\n");
 }
 
+static void ec2b_usage() {
+	fprintf(stderr, "usage: %s ec2b xor <input> <output>\n", program_invocation_name);
+	fprintf(stderr, "       %s ec2b gen <output>\n", program_invocation_name);
+	fprintf(stderr, "       %s ec2b edit <arguments> <input>\n", program_invocation_name);
+	fprintf(stderr, "please run `%s ec2b edit -h` for further help", program_invocation_name);
+}
+
+static void ec2b_xor_usage() {
+	fprintf(stderr, "usage: %s ec2b xor <input> <output>\n", program_invocation_name);
+}
+
+static void ec2b_gen_usage() {
+	fprintf(stderr, "usage: %s ec2b gen <output>\n", program_invocation_name);
+}
+
+static void ec2b_edit_usage() {
+	fprintf(stderr, "usage: %s ec2b edit <arguments> <input>\n", program_invocation_name);
+	fprintf(stderr, "please run `%s ec2b edit -h` for further help", program_invocation_name);
+}
+
+static void ec2b_edit_help() {
+	fprintf(stderr, "usage: %s ec2b edit <arguments> <input>\n", program_invocation_name);
+	fprintf(stderr, "arguments:\n"
+	"-h: show this help\n"
+	"-g: regenerate scrambling key\n"
+	"-d: regenerate scrambling data\n"
+	"-s: regenerate xor seed\n"
+	"-S <seed>: provide a new xor seed\n"
+	"-o <output>: place new file in <output> instead of editing <input> in place\n"
+	"-i <input>: specify input\n");
+}
+
 typedef struct {
 	uint64_t seed;
 	uint8_t key[32];
@@ -230,13 +262,13 @@ static unsigned int mhy0_main(unsigned int argc, const char** argv) {
 
 static unsigned int ec2b_main(int argc, const char** argv) {
 	if (argc < 2) {
-		//ec2b_usage();
+		ec2b_usage();
 		return -1;
 	}
 	const char* mode_s = argv[1];
 	if (strncasecmp(mode_s, "xor", 3) == 0) {
 		if (argc < 4) {
-			//ec2b_xor_usage();
+			ec2b_xor_usage();
 			return -1;
 		}
 		const char* in_file = argv[2];
@@ -275,7 +307,7 @@ static unsigned int ec2b_main(int argc, const char** argv) {
 	}
 	else if (strncasecmp(mode_s, "gen", 3) == 0) {
 		if (argc < 3) {
-			//ec2b_xor_usage();
+			ec2b_gen_usage();
 			return -1;
 		}
 		const char* out_file = argv[2];
@@ -294,7 +326,7 @@ static unsigned int ec2b_main(int argc, const char** argv) {
 	}
 	else if (strncasecmp(mode_s, "edit", 4) == 0) {
 		if (argc < 3) {
-			//ec2b_edit_usage();
+			ec2b_edit_usage();
 			return -1;
 		}
 		const char* in_file = NULL;
@@ -309,7 +341,7 @@ static unsigned int ec2b_main(int argc, const char** argv) {
 		int i;
 		for (i = 2; i < argc; i++) {
 			if (strncasecmp(argv[i], "-h", 2) == 0 || strncmp(argv[i], "-?", 2) == 0) {
-				//ec2b_edit_usage();
+				ec2b_edit_help();
 				return 0;
 			}
 			else if (strncmp(argv[i], "-k", 2) == 0) {
@@ -437,7 +469,7 @@ static unsigned int ec2b_main(int argc, const char** argv) {
 		fprintf(stderr, "Generated new ec2b %s with seed 0x%016llx\n", output_to_input ? in_file : out_file, (unsigned long long) seed);
 		return 0;
 	}
-	// ec2b_usage();
+	ec2b_usage();
 	return -1;
 }
 
