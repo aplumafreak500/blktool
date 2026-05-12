@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MPL-2.0 */
-/* ©2025 Alex Pensinger (ArcticLuma113) */
+/* ©2026 Alex Pensinger (ArcticLuma113) */
 /* Released under the terms of the MPLv2, which can be viewed at https://mozilla.org/MPL/2.0/ */
 
 #include <stddef.h>
@@ -121,7 +121,7 @@ void decrypt_blk0(uint8_t* buf, size_t sz, size_t seedSz, uint8_t* key, uint64_t
 	uint8_t* out = xorpad;
 	if (_out != NULL) out = _out;
 	blkScrambleKey(key);
-	aesScrambleKey(key, blkAesRoundKeys);
+	aesScrambleKeyMhy(key, blkAesRoundKeys);
 	xorCrypt(key, 16, blkXorKey, 16);
 	uint64_t seed = ~0x567ba22babb08098;
 	uint64_t* _buf = (uint64_t*) buf;
@@ -154,6 +154,6 @@ void encrypt_blk0(uint8_t* buf, size_t sz, size_t seedSz, uint8_t* key, uint64_t
 	_seed ^= seed;
 	_key[0] = htole64(_seed);
 	xorCrypt(key, 16, blkXorKey, 16);
-	aesUnscrambleKey(key, blkAesRoundKeys);
+	aesUnscrambleKeyMhy(key, blkAesRoundKeys);
 	blkUnscrambleKey(key);
 }

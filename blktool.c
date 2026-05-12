@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MPL-2.0 */
-/* ©2025 Alex Pensinger (ArcticLuma113) */
+/* ©2026 Alex Pensinger (ArcticLuma113) */
 /* Released under the terms of the MPLv2, which can be viewed at https://mozilla.org/MPL/2.0/ */
 
 #define _GNU_SOURCE
@@ -13,6 +13,7 @@
 #include <sys/random.h>
 #include "blk.h"
 #include "mhy0.h"
+#include "mhy1.h"
 #include "ec2b.h"
 
 static void usage() {
@@ -27,6 +28,11 @@ static void blk_usage() {
 
 static void mhy0_usage() {
 	fprintf(stderr, "usage: %s mhy0 <mode> <input> <output>\n", program_invocation_name);
+	fprintf(stderr, "mode can be `pack` or `unpack`\n");
+}
+
+static void mhy1_usage() {
+	fprintf(stderr, "usage: %s mhy1 <mode> <input> <output>\n", program_invocation_name);
 	fprintf(stderr, "mode can be `pack` or `unpack`\n");
 }
 
@@ -260,6 +266,82 @@ static unsigned int mhy0_main(unsigned int argc, const char** argv) {
 	return -1;
 }
 
+static unsigned int mhy1_main(unsigned int argc, const char** argv) {
+	if (argc < 4) {
+		mhy1_usage();
+		return -1;
+	}
+	const char* mode = argv[1];
+	const char* in_file = argv[2];
+	const char* out_file = argv[3];
+	uint8_t* buf;
+	size_t bufSz;
+	static char filenameBuf[1024];
+	unsigned int i = 0;
+	int ret;
+	if (strncasecmp(mode, "pack", 4) == 0) {
+		FILE* out_fp = fopen(out_file, "wb");
+		if (out_fp == NULL) {
+			fprintf(stderr, "output file open error: %s\n", strerror(errno));
+			return -1;
+		}
+		unsigned int mhy1_cnt;
+		if (argc > 4) {
+			mhy1_cnt = strtoul(argv[4], NULL, 10);
+		}
+		else {
+			mhy1_cnt = 1;
+		}
+		for (i = 0; i < mhy1_cnt; i++) {
+			snprintf(filenameBuf, 1024, "%s.pack%d", in_file, i);
+			ret = pack_mhy1(filenameBuf, out_fp);
+			if (ret) {
+				fprintf(stderr, "can't pack mhy1 data from packfile(s) %s*\n", filenameBuf);
+				fclose(out_fp);
+				return ret;
+			}
+		}
+		fclose(out_fp);
+		fprintf(stderr, "Sucessfully packed mhy1 file %s\n", out_file);
+		return 0;
+	}
+	else if (strncasecmp(mode, "unpack", 6) == 0) {
+		FILE* in_fp = fopen(in_file, "rb");
+		if (in_fp == NULL) {
+			fprintf(stderr, "input file open error: %s\n", strerror(errno));
+			return -1;
+		}
+		fseek(in_fp, 0, SEEK_END);
+		bufSz = ftell(in_fp);
+		fseek(in_fp, 0, SEEK_SET);
+		buf = malloc(bufSz);
+		if (buf == NULL) {
+			fprintf(stderr, "can't allocate buffer\n");
+			return -1;
+		}
+		fread(buf, bufSz, 1, in_fp);
+		fclose(in_fp);
+		fprintf(stderr, "Read from input file %s\n", in_file);
+		uint8_t* next_mhy1 = buf;
+		uint8_t* current_mhy1 = buf;
+		while (current_mhy1 < buf + bufSz) {
+			snprintf(filenameBuf, 1024, "%s.pack%d", out_file, i);
+			fprintf(stderr, "buf 0x%08lx bufSz 0x%08lx eof 0x%08lx current_mhy1 0x%08lx file %s\n", (unsigned long) buf, bufSz, (unsigned long) buf + bufSz, (unsigned long) current_mhy1, filenameBuf);
+			ret = extract_mhy1(current_mhy1, filenameBuf, &next_mhy1);
+			if (ret) {
+				fprintf(stderr, "can't extract mhy1 data at offset 0x%08lx\n", (unsigned long) current_mhy1 - (unsigned long) buf);
+				return ret;
+			}
+			current_mhy1 = next_mhy1;
+			i++;
+		}
+		fprintf(stderr, "Sucessfully extracted mhy1 file %s\n", in_file);
+		return 0;
+	}
+	mhy1_usage();
+	return -1;
+}
+
 static unsigned int ec2b_main(int argc, const char** argv) {
 	if (argc < 2) {
 		ec2b_usage();
@@ -484,6 +566,9 @@ int main(int argc, const char** argv) {
 	}
 	else if (strncasecmp(mode, "mhy0", 4) == 0) {
 		return mhy0_main(argc - 1, &argv[1]);
+	}
+	else if (strncasecmp(mode, "mhy1", 4) == 0) {
+		return mhy1_main(argc - 1, &argv[1]);
 	}
 	else if (strncasecmp(mode, "ec2b", 4) == 0) {
 		return ec2b_main(argc - 1, &argv[1]);

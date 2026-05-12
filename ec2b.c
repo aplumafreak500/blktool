@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MPL-2.0 */
-/* ©2025 Alex Pensinger (ArcticLuma113) */
+/* ©2026 Alex Pensinger (ArcticLuma113) */
 /* Released under the terms of the MPLv2, which can be viewed at https://mozilla.org/MPL/2.0/ */
 
 #include <stdlib.h>
@@ -30,7 +30,7 @@ static const unsigned char ec2bXorKey[16] = {0xa2, 0x25, 0x25, 0x99, 0xb7, 0x62,
 void xorKeyFromEc2b(const ec2b_t* in, uint8_t* out) {
 	uint8_t _key[16];
 	memcpy(_key, in->key, 16);
-	aesScrambleKey(_key, ec2bAesRoundKeys);
+	aesScrambleKeyMhy(_key, ec2bAesRoundKeys);
 	xorCrypt(_key, 16, ec2bXorKey, 16);
 	const uint64_t* key = (const uint64_t*) _key;
 	const uint64_t* data = (const uint64_t*) in->data;
@@ -57,7 +57,7 @@ void genNewEc2b(ec2b_t* out, uint8_t* key, uint8_t* data, uint64_t* seed, unsign
 	unsigned int i;
 	if (key != NULL) {
 		memcpy(newKey, key, 16);
-		aesScrambleKey(newKey, ec2bAesRoundKeys);
+		aesScrambleKeyMhy(newKey, ec2bAesRoundKeys);
 		xorCrypt(newKey, 16, ec2bXorKey, 16);
 	}
 	else {
@@ -91,5 +91,5 @@ void genNewEc2b(ec2b_t* out, uint8_t* key, uint8_t* data, uint64_t* seed, unsign
 		}
 	}
 	xorCrypt(newKey, 16, ec2bXorKey, 16);
-	aesUnscrambleKey(newKey, ec2bAesRoundKeys);
+	aesUnscrambleKeyMhy(newKey, ec2bAesRoundKeys);
 }
