@@ -404,8 +404,8 @@ static unsigned int encr_main(unsigned int argc, const char** argv) {
 		fread(buf, bufSz, 1, in_fp);
 		fclose(in_fp);
 		fprintf(stderr, "Read from input file %s\n", in_file);
-		uint8_t* next_encr = buf;
-		uint8_t* current_encr = buf;
+		const uint8_t* next_encr = buf;
+		const uint8_t* current_encr = buf;
 		while (current_encr < buf + bufSz) {
 			snprintf(filenameBuf, 1024, "%s.pack%d", out_file, i);
 			fprintf(stderr, "buf 0x%08lx bufSz 0x%08lx eof 0x%08lx current_encr 0x%08lx file %s\n", (unsigned long) buf, bufSz, (unsigned long) buf + bufSz, (unsigned long) current_encr, filenameBuf);
