@@ -218,7 +218,7 @@ int extract_mhy0(uint8_t* in_buf, const char* filename, uint8_t** _next_mhy0) {
 		fprintf(stderr, "Decryption error (header)\n");
 		return ret;
 	}
-#if 1
+#if 0
 	snprintf(filenameBuf, 1024, "%s.hdr_decrypt", filename);
 	file = fopen(filenameBuf, "wb");
 	if (file == NULL) {
@@ -241,7 +241,7 @@ int extract_mhy0(uint8_t* in_buf, const char* filename, uint8_t** _next_mhy0) {
 		free(hdr_buf);
 		return ret;
 	}
-#if 1
+#if 0
 	snprintf(filenameBuf, 1024, "%s.hdr_decomp", filename);
 	file = fopen(filenameBuf, "wb");
 	if (file == NULL) {
@@ -331,7 +331,7 @@ int extract_mhy0(uint8_t* in_buf, const char* filename, uint8_t** _next_mhy0) {
 			free(hdr_buf);
 			return -1;
 		}
-#if 1
+#if 0
 		snprintf(filenameBuf, 1024, "%s.blk%d.decrypt", filename, i);
 		file = fopen(filenameBuf, "wb");
 		if (file == NULL) {
@@ -379,6 +379,7 @@ int extract_mhy0(uint8_t* in_buf, const char* filename, uint8_t** _next_mhy0) {
 		if (outfp == NULL) {
 			fprintf(stderr, "Can't open file %s: %s\n", filenameBuf, strerror(errno));
 			free(hdr_buf);
+			free(data_buf);
 			return -1;
 		}
 		fwrite(data_buf + cab_blk_off, cab_blk_sz, 1, outfp);
@@ -389,6 +390,7 @@ int extract_mhy0(uint8_t* in_buf, const char* filename, uint8_t** _next_mhy0) {
 	fprintf(stderr, "if present, the next one should be at 0x%08lx\n", (unsigned long) next_mhy0);
 	if (_next_mhy0 != NULL) *_next_mhy0 = next_mhy0;
 	free(hdr_buf);
+	free(data_buf);
 	return 0;
 }
 
@@ -488,11 +490,13 @@ int pack_mhy0(const char* in_filename, FILE* out_fp) {
 	tmp_blk_fp = fopen(filenameBuf, "wb+");
 	if (tmp_blk_fp == NULL) {
 		fprintf(stderr, "Can't open file %s: %s\n", filenameBuf, strerror(errno));
+		free(dec_buf);
 		return -1;
 	}
 	cmp_buf = malloc(0x50000);
 	if (cmp_buf == NULL) {
 		fprintf(stderr, "Can't allocate block compression buffer\n");
+		free(dec_buf);
 		return -1;
 	}
 	block_mem_t blocks[blk_cnt];
@@ -535,6 +539,8 @@ int pack_mhy0(const char* in_filename, FILE* out_fp) {
 		ret = LZ4_compress_HC((const char*) dec_buf, (char*) (cmp_buf + 12), blk_sz, 0x4fff4, 12);
 		if (ret < 0) {
 			fprintf(stderr, "Can't compress block %d\n", i);
+			free(dec_buf);
+			free(cmp_buf);
 			return -1;
 		}
 		blocks[i].cmp_sz = ret + 12;
@@ -553,12 +559,14 @@ int pack_mhy0(const char* in_filename, FILE* out_fp) {
 	hdr_buf = malloc(hdr_sz);
 	if (hdr_buf == NULL) {
 		fprintf(stderr, "Can't allocate header buffer\n");
+		free(dec_buf);
 		return -1;
 	}
 	cmp_buf = malloc(cmp_sz);
 	if (hdr_buf == NULL) {
 		fprintf(stderr, "Can't allocate compressed header buffer\n");
 		free(hdr_buf);
+		free(dec_buf);
 		return -1;
 	}
 #ifndef NDEBUG
@@ -599,6 +607,9 @@ int pack_mhy0(const char* in_filename, FILE* out_fp) {
 	ret = LZ4_compress_HC((const char*) hdr_buf, (char*) (cmp_buf + 0x2f), hdr_sz, cmp_sz - 0x2f, 12);
 	if (ret < 0) {
 		fprintf(stderr, "Can't compress header\n");
+		free(hdr_buf);
+		free(dec_buf);
+		free(cmp_buf);
 		return -1;
 	}
 	free(hdr_buf);
@@ -624,5 +635,7 @@ int pack_mhy0(const char* in_filename, FILE* out_fp) {
 //		fwrite(&i, 4 - (out_sz & 3), 1, out_fp);
 //	}
 	fflush(out_fp);
+	free(dec_buf);
+	free(cmp_buf);
 	return 0;
 }
