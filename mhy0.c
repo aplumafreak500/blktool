@@ -95,6 +95,7 @@ const uint8_t lut[3][16] = {
 };
 const uint8_t key[8] = {0x48, 0x14, 0x36, 0xed, 0x8e, 0x44, 0x5b, 0xb6};
 const uint8_t gf_idx[8] = {0xa7, 0x99, 0x66, 0x50, 0xb9, 0x2d, 0xf0, 0x78};
+/* blk.c */
 extern const uint8_t blkScrambleTbl[0x400];
 
 static int mhy0_encrypt(uint8_t* in, int isHeader) {
@@ -217,6 +218,17 @@ int extract_mhy0(uint8_t* in_buf, const char* filename, uint8_t** _next_mhy0) {
 		fprintf(stderr, "Decryption error (header)\n");
 		return ret;
 	}
+#if 1
+	snprintf(filenameBuf, 1024, "%s.hdr_decrypt", filename);
+	file = fopen(filenameBuf, "wb");
+	if (file == NULL) {
+		fprintf(stderr, "Can't open file %s: %s\n", filenameBuf, strerror(errno));
+		return -1;
+	}
+	fwrite(in_buf, hdr_sz + 8, 1, file);
+	fclose(file);
+	file = NULL;
+#endif
 	uint32_t hdr_sz_dec = unshuffleUint(in_buf + 0x28);
 	uint8_t* hdr_buf = malloc(hdr_sz_dec);
 	if (hdr_buf == NULL) {
@@ -229,6 +241,17 @@ int extract_mhy0(uint8_t* in_buf, const char* filename, uint8_t** _next_mhy0) {
 		free(hdr_buf);
 		return ret;
 	}
+#if 1
+	snprintf(filenameBuf, 1024, "%s.hdr_decomp", filename);
+	file = fopen(filenameBuf, "wb");
+	if (file == NULL) {
+		fprintf(stderr, "Can't open file %s: %s\n", filenameBuf, strerror(errno));
+		return -1;
+	}
+	fwrite(hdr_buf, hdr_sz_dec, 1, file);
+	fclose(file);
+	file = NULL;
+#endif
 	uint32_t cab_cnt = unshuffleInt(hdr_buf);
 	pack_serialized_t s_pack;
 	memcpy(s_pack.key, in_buf + 8, 32);
@@ -308,6 +331,18 @@ int extract_mhy0(uint8_t* in_buf, const char* filename, uint8_t** _next_mhy0) {
 			free(hdr_buf);
 			return -1;
 		}
+#if 1
+		snprintf(filenameBuf, 1024, "%s.blk%d.decrypt", filename, i);
+		file = fopen(filenameBuf, "wb");
+		if (file == NULL) {
+			fprintf(stderr, "Can't open file %s: %s\n", filenameBuf, strerror(errno));
+			free(hdr_buf);
+			return -1;
+		}
+		fwrite(in_buf + data_off, blk_cmp_sz, 1, file);
+		fclose(file);
+		file = NULL;
+#endif
 		snprintf(filenameBuf, 1024, "%s.blk%d.key", filename, i);
 		file = fopen(filenameBuf, "wb");
 		if (file == NULL) {

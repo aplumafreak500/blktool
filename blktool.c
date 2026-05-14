@@ -424,6 +424,106 @@ static unsigned int encr_main(unsigned int argc, const char** argv) {
 	return -1;
 }
 
+extern int mr0k_decrypt(uint8_t* buf, size_t buf_size, unsigned int mode);
+
+static unsigned int mr0k_main(unsigned int argc, const char** argv) {
+	if (argc < 4) {
+		//mr0k_usage();
+		return -1;
+	}
+	const char* mode = argv[1];
+	const char* in_file = argv[2];
+	const char* out_file = argv[3];
+	const char* seed_file = NULL;
+	if (argc >= 4) {
+		seed_file = argv[4];
+	}
+	FILE* in_fp = fopen(in_file, "rb");
+	if (in_fp == NULL) {
+		fprintf(stderr, "input file open error: %s\n", strerror(errno));
+		return -1;
+	}
+	FILE* out_fp = fopen(out_file, "wb");
+	if (out_fp == NULL) {
+		fprintf(stderr, "output file open error: %s\n", strerror(errno));
+		return -1;
+	}
+	FILE* seed_fp = NULL;
+	seed_t seed;
+	uint8_t* buf;
+	size_t bufSz;
+	if (strncasecmp(mode, "encrypt", 8) == 0) {
+#if 1
+		fprintf(stderr, "mr0k encryption is not supported yet\n");
+		return 100;
+#else
+		unsigned int hasSeed = 0;
+		if (seed_file != NULL) {
+			seed_fp = fopen(seed_file, "rb");
+		}
+		if (seed_fp != NULL) {
+#ifndef NDEBUG
+			memset(&seed, 0, sizeof(seed));
+#endif
+			fread(&seed, sizeof(seed), 1, seed_fp);
+			fclose(seed_fp);
+			fprintf(stderr, "Read from seed file %s\n", seed_file);
+			hasSeed = 1;
+		}
+		else {
+			getrandom(&seed, sizeof(seed) - sizeof(uint16_t), 0);
+		}
+		fseek(in_fp, 0, SEEK_END);
+		bufSz = ftell(in_fp);
+		fseek(in_fp, 0, SEEK_SET);
+		buf = malloc(bufSz);
+		if (buf == NULL) {
+			fprintf(stderr, "can't allocate buffer\n");
+			return -1;
+		}
+		fread(buf, bufSz, 1, in_fp);
+		fclose(in_fp);
+		if (!hasSeed) seed.mr0kSz = bufSz <= 2048 ? bufSz : 2048;
+		seed.mr0kSz = be16toh(seed.mr0kSz) & ~7;
+		seed.seed = be64toh(seed.seed);
+		fprintf(stderr, "Read from input file %s\n", in_file);
+		fprintf(stderr, "\t(key1 hex: %016llx%016llx key2 hex: %016llx%016llx seed size: %hu seed: 0x%016llx)\n", (unsigned long long) be64toh(((uint64_t*) seed.key)[0]), (unsigned long long) be64toh(((uint64_t*) seed.key)[1]), (unsigned long long) be64toh(((uint64_t*) seed.key)[2]), (unsigned long long) be64toh(((uint64_t*) seed.key)[3]), seed.mr0kSz, (unsigned long long) seed.seed);
+		encrypt_mr0k(buf, bufSz, seed.mr0kSz, seed.key, seed.seed);
+		hdr.magic = htobe32(0x626c6b00);
+		hdr.version = htole32(16);
+		memcpy(hdr.key1, seed.key, 32);
+		hdr.mr0kSz = htole16(seed.mr0kSz);
+		fwrite(&hdr, sizeof(hdr), 1, out_fp);
+		fwrite(buf, bufSz, 1, out_fp);
+		fclose(out_fp);
+		fprintf(stderr, "Wrote to output file %s\n", out_file);
+		fprintf(stderr, "\t(key1 hex: %016llx%016llx key2 hex: %016llx%016llx seed size: %hu)\n", (unsigned long long) be64toh(((uint64_t*) seed.key)[0]), (unsigned long long) be64toh(((uint64_t*) seed.key)[1]), (unsigned long long) be64toh(((uint64_t*) seed.key)[2]), (unsigned long long) be64toh(((uint64_t*) seed.key)[3]), seed.mr0kSz);
+		return 0;
+#endif
+	}
+	else if (strncasecmp(mode, "decrypt", 8) == 0) {
+		fseek(in_fp, 0, SEEK_END);
+		bufSz = ftell(in_fp);
+		fseek(in_fp, 0, SEEK_SET);
+		buf = malloc(bufSz);
+		if (buf == NULL) {
+			fprintf(stderr, "can't allocate buffer\n");
+			return -1;
+		}
+		fread(buf, bufSz, 1, in_fp);
+		fclose(in_fp);
+		fprintf(stderr, "Read from input file %s\n", in_file);
+		mr0k_decrypt(buf, bufSz, 1);
+		*(uint32_t*) buf = htobe32(0x4d723044);
+		fwrite(buf, bufSz, 1, out_fp);
+		fclose(out_fp);
+		fprintf(stderr, "Wrote to output file %s\n", out_file);
+		return 0;
+	}
+	//mr0k_usage();
+	return -1;
+}
+
 static unsigned int ec2b_main(int argc, const char** argv) {
 	if (argc < 2) {
 		ec2b_usage();
@@ -654,6 +754,9 @@ int main(int argc, const char** argv) {
 	}
 	else if (strncasecmp(mode, "encr", 4) == 0) {
 		return encr_main(argc - 1, &argv[1]);
+	}
+	else if (strncasecmp(mode, "mr0k", 5) == 0) {
+		return mr0k_main(argc - 1, &argv[1]);
 	}
 	else if (strncasecmp(mode, "ec2b", 4) == 0) {
 		return ec2b_main(argc - 1, &argv[1]);
