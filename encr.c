@@ -187,6 +187,18 @@ int extract_encr(const uint8_t* buf, const char* filename, const uint8_t** _next
 		blk_cmp_sz = be32toh(cur_block->block_cmp_size);
 		flags = be16toh(cur_block->block_flags);
 		fprintf(stderr, "blk %d offset 0x%08lx cmpSz 0x%08x decSz 0x%08x flags 0x%x\n", i, (unsigned long) cur_block, blk_cmp_sz, blk_dec_sz, flags);
+#if 1
+		snprintf(filenameBuf, 1024, "%s.blk%d", filename, i);
+		file = fopen(filenameBuf, "wb");
+		if (file == NULL) {
+			fprintf(stderr, "Can't open file %s: %s\n", filenameBuf, strerror(errno));
+			free(blk_data_buf);
+			return -1;
+		}
+		fwrite((buf + data_off), blk_cmp_sz, 1, file);
+		fclose(file);
+		file = NULL;
+#endif
 #if 0
 		if (!(((flags & 0x3f) == 0) || ((flags & 0x3f) == 2) || ((flags & 0x3f) == 3))) {
 			fprintf(stderr, "Error: Only ENCR files compressed with lz4 or lz4hc, or uncompressed, are supported at the moment. (ctype = %d)\n", flags & 0x3f);
