@@ -526,7 +526,7 @@ int pack_mhy1(const char* in_filename, FILE* out_fp) {
 		return -1;
 	}
 	cmp_buf = malloc(cmp_sz);
-	if (hdr_buf == NULL) {
+	if (cmp_buf == NULL) {
 		fprintf(stderr, "Can't allocate compressed header buffer\n");
 		free(hdr_buf);
 		free(dec_buf);
