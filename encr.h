@@ -7,5 +7,5 @@
 #include <stdint.h>
 #include <stddef.h>
 int extract_encr(const uint8_t*, const char*, const uint8_t**);
-//int pack_encr(const char*, FILE*);
+int pack_encr(const char*, FILE*);
 #endif

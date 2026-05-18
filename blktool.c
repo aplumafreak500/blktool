@@ -15,6 +15,7 @@
 #include "mhy0.h"
 #include "mhy1.h"
 #include "encr.h"
+#include "mr0k.h"
 #include "ec2b.h"
 
 static void usage() {
@@ -357,7 +358,7 @@ static unsigned int encr_main(unsigned int argc, const char** argv) {
 	unsigned int i = 0;
 	int ret;
 	if (strncasecmp(mode, "pack", 4) == 0) {
-#if 1
+#if 0
 		fprintf(stderr, "ENCR packing is not implemented yet.\nPlease check back in later.");
 		return 10;
 #else
@@ -423,8 +424,6 @@ static unsigned int encr_main(unsigned int argc, const char** argv) {
 	//encr_usage();
 	return -1;
 }
-
-extern int mr0k_decrypt(uint8_t* buf, size_t buf_size, unsigned int mode);
 
 static unsigned int mr0k_main(unsigned int argc, const char** argv) {
 	if (argc < 4) {
