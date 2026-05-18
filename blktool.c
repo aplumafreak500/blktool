@@ -14,6 +14,7 @@
 #include "blk.h"
 #include "mhy0.h"
 #include "mhy1.h"
+#include "mr0k.h"
 #include "ec2b.h"
 
 static void usage() {
@@ -342,6 +343,68 @@ static unsigned int mhy1_main(unsigned int argc, const char** argv) {
 	return -1;
 }
 
+static unsigned int mr0k_main(unsigned int argc, const char** argv) {
+	if (argc < 4) {
+		//mr0k_usage();
+		return -1;
+	}
+	const char* mode = argv[1];
+	const char* in_file = argv[2];
+	const char* out_file = argv[3];
+	FILE* in_fp = fopen(in_file, "rb");
+	if (in_fp == NULL) {
+		fprintf(stderr, "input file open error: %s\n", strerror(errno));
+		return -1;
+	}
+	FILE* out_fp = fopen(out_file, "wb");
+	if (out_fp == NULL) {
+		fprintf(stderr, "output file open error: %s\n", strerror(errno));
+		return -1;
+	}
+	uint8_t* buf;
+	size_t bufSz;
+	if (strncasecmp(mode, "encrypt", 8) == 0) {
+		fseek(in_fp, 0, SEEK_END);
+		bufSz = ftell(in_fp);
+		fseek(in_fp, 0, SEEK_SET);
+		buf = malloc(bufSz);
+		if (buf == NULL) {
+			fprintf(stderr, "can't allocate buffer\n");
+			return -1;
+		}
+		fread(buf, bufSz, 1, in_fp);
+		fclose(in_fp);
+		fprintf(stderr, "Read from input file %s\n", in_file);
+		mr0k_encrypt(buf, bufSz, 1);
+		*(uint32_t*) buf = htobe32(0x6d72306b);
+		fwrite(buf, bufSz, 1, out_fp);
+		fclose(out_fp);
+		fprintf(stderr, "Wrote to output file %s\n", out_file);
+		return 0;
+	}
+	else if (strncasecmp(mode, "decrypt", 8) == 0) {
+		fseek(in_fp, 0, SEEK_END);
+		bufSz = ftell(in_fp);
+		fseek(in_fp, 0, SEEK_SET);
+		buf = malloc(bufSz);
+		if (buf == NULL) {
+			fprintf(stderr, "can't allocate buffer\n");
+			return -1;
+		}
+		fread(buf, bufSz, 1, in_fp);
+		fclose(in_fp);
+		fprintf(stderr, "Read from input file %s\n", in_file);
+		mr0k_decrypt(buf, bufSz, 1);
+		*(uint32_t*) buf = htobe32(0x4d723044);
+		fwrite(buf, bufSz, 1, out_fp);
+		fclose(out_fp);
+		fprintf(stderr, "Wrote to output file %s\n", out_file);
+		return 0;
+	}
+	//mr0k_usage();
+	return -1;
+}
+
 static unsigned int ec2b_main(int argc, const char** argv) {
 	if (argc < 2) {
 		ec2b_usage();
@@ -569,6 +632,9 @@ int main(int argc, const char** argv) {
 	}
 	else if (strncasecmp(mode, "mhy1", 4) == 0) {
 		return mhy1_main(argc - 1, &argv[1]);
+	}
+	else if (strncasecmp(mode, "mr0k", 5) == 0) {
+		return mr0k_main(argc - 1, &argv[1]);
 	}
 	else if (strncasecmp(mode, "ec2b", 4) == 0) {
 		return ec2b_main(argc - 1, &argv[1]);
