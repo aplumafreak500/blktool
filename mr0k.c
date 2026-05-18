@@ -10,6 +10,7 @@
 #include <string.h>
 #include <endian.h>
 #include "mhycrypt.h"
+#include "mr0k.h"
 
 /* Primary keys */
 static const uint8_t mr0k_block_key[1024] = {
@@ -406,15 +407,77 @@ int mr0k_decrypt(uint8_t* buf, size_t buf_size, unsigned int mode) {
 	seed = htole64(seed1 ^ seed2 ^ (seed1 + buf_size - 20));
 	uint8_t* enc_buf = buf + 0x94;
 	uint8_t* enc_key = (uint8_t*) &seed;
-	for (i = 0; i < enc_size; i++) {
-		enc_buf[i] ^= enc_key[i % 8]; // TODO is this done when the block key is absent?
-		if (block_key) enc_buf[i] ^= block_key[i % 1024];
-	}
+	xorCrypt(enc_buf, enc_size, enc_key, 8);
+	if (block_key) xorCrypt(enc_buf, enc_size, block_key, 1024); // TODO is this done when the block key is absent?
 	enc_buf = buf + 0x14;
-	if (post_key) {
-		for (i = 0; i < 0xc00; i++) {
-			enc_buf[i] ^= post_key[i % 24];
+	if (post_key) xorCrypt(enc_buf, 0xc00, post_key, 24); // TODO: what about smaller files?
+	return 0;
+}
+
+int mr0k_encrypt(uint8_t* buf, size_t buf_size, unsigned int mode) {
+	if (buf == NULL) return -1;
+	if (buf_size < 0x94) return -1;
+	const uint8_t* block_key = NULL;
+	const uint8_t* scramble_key = NULL;
+	const uint8_t* xor_key = NULL;
+	const uint8_t (*aes_round_keys)[16] = NULL;
+	const uint8_t *post_key = NULL;
+	unsigned int i;
+	switch (mode) {
+	case MROK_MODE_HK4E_CBT1:
+		break;
+	case MROK_MODE_HKRPG:
+	default:
+		block_key = mr0k_block_key;
+		xor_key = mr0k_xor_key;
+		aes_round_keys = mr0k_aes_round_keys;
+		break;
+	case MR0K_MODE_BH3:
+		block_key = bh3_block_key;
+		scramble_key = bh3_scramble_key;
+		xor_key = bh3_xor_key;
+		aes_round_keys = bh3_aes_round_keys;
+		break;
+	case MR0K_MODE_BH3_EARLY:
+		block_key = hk4e_cbt_block_key;
+		aes_round_keys = blk_cbt_aes_round_keys;
+		break;
+	case MR0K_MODE_NXX:
+		block_key = mr0k_block_key;
+		xor_key = mr0k_xor_key;
+		aes_round_keys = mr0k_aes_round_keys;
+		post_key = nxx_post_key;
+		break;
+	}
+	uint8_t* enc_buf = buf + 0x14;
+	if (post_key) xorCrypt(enc_buf, 0xc00, post_key, 24); // TODO: what about smaller files?
+	unsigned int enc_size = ((buf_size - 0x94) >> 7) * 16;
+	if (enc_size > 0x400) enc_size = 0x400;
+	enc_buf = buf + 0x94;
+	uint8_t dynkeys[3][16];
+	memcpy(dynkeys[0], buf + 4, 16);
+	memcpy(dynkeys[1], buf + 0x74, 16);
+	memcpy(dynkeys[2], buf + 0x84, 16);
+	if (scramble_key) {
+		for (i = 0; i < 16; i++) {
+			dynkeys[0][i] = scramble_key[(i % 4) * 256 | dynkeys[0][i]];
 		}
 	}
+	if (aes_round_keys) {
+		aesScrambleKeyMhy(dynkeys[0], aes_round_keys);
+	}
+	if (xor_key) xorCrypt(dynkeys[1], 16, xor_key, 16);
+	xorCrypt(dynkeys[2], 16, dynkeys[0], 16);
+	uint64_t seed, seed1, seed2;
+	seed1 = le64toh(*(uint64_t*) dynkeys[1]);
+	seed2 = le64toh(*(uint64_t*) dynkeys[2]);
+	seed = htole64(seed1 ^ seed2 ^ (seed1 + buf_size - 20));
+	uint8_t* enc_key = (uint8_t*) &seed;
+	if (block_key) xorCrypt(enc_buf, enc_size, block_key, 1024); // TODO is this done when the block key is absent?
+	xorCrypt(enc_buf, enc_size, enc_key, 8);
+	if (aes_round_keys) {
+		aesUnscrambleKeyMhy(dynkeys[2], aes_round_keys);
+	}
+	memcpy(buf + 0x84, dynkeys[2], 16);
 	return 0;
 }
