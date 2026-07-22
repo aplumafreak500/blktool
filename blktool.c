@@ -16,6 +16,7 @@
 #include "mhy1.h"
 #include "mr0k.h"
 #include "ec2b.h"
+#include "mhycrypt.h"
 
 static void usage() {
 	fprintf(stderr, "usage: %s <type>\n", program_invocation_name);
@@ -618,6 +619,61 @@ static unsigned int ec2b_main(int argc, const char** argv) {
 	return -1;
 }
 
+static unsigned int xor_main(unsigned int argc, const char** argv) {
+	if (argc < 4) {
+		//xor_usage();
+		return -1;
+	}
+	const char* in_file = argv[1];
+	const char* key_file = argv[2];
+	const char* out_file = argv[3];
+	FILE* in_fp = fopen(in_file, "rb");
+	if (in_fp == NULL) {
+		fprintf(stderr, "input file open error: %s\n", strerror(errno));
+		return -1;
+	}
+	FILE* out_fp = fopen(out_file, "wb");
+	if (out_fp == NULL) {
+		fprintf(stderr, "output file open error: %s\n", strerror(errno));
+		return -1;
+	}
+	FILE* key_fp = fopen(key_file, "rb");
+	if (key_fp == NULL) {
+		fprintf(stderr, "key file open error: %s\n", strerror(errno));
+		return -1;
+	}
+	uint8_t* buf;
+	uint8_t* key_buf;
+	size_t bufSz, keyBufSz;
+	fseek(in_fp, 0, SEEK_END);
+	bufSz = ftell(in_fp);
+	fseek(in_fp, 0, SEEK_SET);
+	buf = malloc(bufSz);
+	if (buf == NULL) {
+		fprintf(stderr, "can't allocate buffer\n");
+		return -1;
+	}
+	fseek(key_fp, 0, SEEK_END);
+	keyBufSz = ftell(key_fp);
+	fseek(key_fp, 0, SEEK_SET);
+	key_buf = malloc(keyBufSz);
+	if (key_buf == NULL) {
+		fprintf(stderr, "can't allocate buffer\n");
+		return -1;
+	}
+	fread(buf, bufSz, 1, in_fp);
+	fclose(in_fp);
+	fprintf(stderr, "Read from input file %s\n", in_file);
+	fread(key_buf, keyBufSz, 1, key_fp);
+	fclose(key_fp);
+	fprintf(stderr, "Read from key file %s\n", key_file);
+	xorCrypt(buf, bufSz, key_buf, keyBufSz);
+	fwrite(buf, bufSz, 1, out_fp);
+	fclose(out_fp);
+	fprintf(stderr, "Wrote to output file %s\n", out_file);
+	return 0;
+}
+
 int main(int argc, const char** argv) {
 	if (argc < 2) {
 		usage();
@@ -638,6 +694,9 @@ int main(int argc, const char** argv) {
 	}
 	else if (strncasecmp(mode, "ec2b", 4) == 0) {
 		return ec2b_main(argc - 1, &argv[1]);
+	}
+	else if (strncasecmp(mode, "xor", 3) == 0) {
+		return xor_main(argc - 1, &argv[1]);
 	}
 	usage();
 	return -1;
