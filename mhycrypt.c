@@ -54,6 +54,27 @@ static const uint8_t sboxInv[256] = {
 	0x17, 0x2b, 0x04, 0x7e, 0xba, 0x77, 0xd6, 0x26, 0xe1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0c, 0x7d
 };
 
+/* TODO Inverse table. Without it, we can't pack new files. */
+/* This is essentially the normal S-box, but with each byte XOR'd by its index. Is the inverse S-box constructed the same way? */
+static const uint8_t sboxBlb3[256] = {
+	0x63, 0x7d, 0x75, 0x78, 0xf6, 0x6e, 0x69, 0xc2, 0x38, 0x08, 0x6d, 0x20, 0xf2, 0xda, 0xa5, 0x79,
+	0xda, 0x93, 0xdb, 0x6e, 0xee, 0x4c, 0x51, 0xe7, 0xb5, 0xcd, 0xb8, 0xb4, 0x80, 0xb9, 0x6c, 0xdf,
+	0x97, 0xdc, 0xb1, 0x05, 0x12, 0x1a, 0xd1, 0xeb, 0x1c, 0x8c, 0xcf, 0xda, 0x5d, 0xf5, 0x1f, 0x3a,
+	0x34, 0xf6, 0x11, 0xf0, 0x2c, 0xa3, 0x33, 0xad, 0x3f, 0x2b, 0xba, 0xd9, 0xd7, 0x1a, 0x8c, 0x4a,
+	0x49, 0xc2, 0x6e, 0x59, 0x5f, 0x2b, 0x1c, 0xe7, 0x1a, 0x72, 0x9c, 0xf8, 0x65, 0xae, 0x61, 0xcb,
+	0x03, 0x80, 0x52, 0xbe, 0x74, 0xa9, 0xe7, 0x0c, 0x32, 0x92, 0xe4, 0x62, 0x16, 0x11, 0x06, 0x90,
+	0xb0, 0x8e, 0xc8, 0x98, 0x27, 0x28, 0x55, 0xe2, 0x2d, 0x90, 0x68, 0x14, 0x3c, 0x51, 0xf1, 0xc7,
+	0x21, 0xd2, 0x32, 0xfc, 0xe6, 0xe8, 0x4e, 0x82, 0xc4, 0xcf, 0xa0, 0x5a, 0x6c, 0x82, 0x8d, 0xad,
+	0x4d, 0x8d, 0x91, 0x6f, 0xdb, 0x12, 0xc2, 0x90, 0x4c, 0x2e, 0xf4, 0xb6, 0xe8, 0xd0, 0x97, 0xfc,
+	0xf0, 0x10, 0xdd, 0x4f, 0xb6, 0xbf, 0x06, 0x1f, 0xde, 0x77, 0x22, 0x8f, 0x42, 0xc3, 0x95, 0x44,
+	0x40, 0x93, 0x98, 0xa9, 0xed, 0xa3, 0x82, 0xfb, 0x6a, 0x7a, 0x06, 0xc9, 0x3d, 0x38, 0x4a, 0xd6,
+	0x57, 0x79, 0x85, 0xde, 0x39, 0x60, 0xf8, 0x1e, 0xd4, 0xef, 0x4e, 0x51, 0xd9, 0xc7, 0x10, 0xb7,
+	0x7a, 0xb9, 0xe7, 0xed, 0xd8, 0x63, 0x72, 0x01, 0x20, 0x14, 0xbe, 0xd4, 0x87, 0x70, 0x45, 0x45,
+	0xa0, 0xef, 0x67, 0xb5, 0x9c, 0xd6, 0x20, 0xd9, 0xb9, 0xec, 0x8d, 0x62, 0x5a, 0x1c, 0xc3, 0x41,
+	0x01, 0x19, 0x7a, 0xf2, 0x8d, 0x3c, 0x68, 0x73, 0x73, 0xf7, 0x6d, 0x02, 0x22, 0xb8, 0xc6, 0x30,
+	0x7c, 0x50, 0x7b, 0xfe, 0x4b, 0x13, 0xb4, 0x9f, 0xb9, 0x60, 0xd7, 0xf4, 0x4c, 0xa9, 0x45, 0xe9
+};
+
 static const uint8_t mul2Tbl[256] = {
 	0x00, 0x02, 0x04, 0x06, 0x08, 0x0a, 0x0c, 0x0e, 0x10, 0x12, 0x14, 0x16, 0x18, 0x1a, 0x1c, 0x1e,
 	0x20, 0x22, 0x24, 0x26, 0x28, 0x2a, 0x2c, 0x2e, 0x30, 0x32, 0x34, 0x36, 0x38, 0x3a, 0x3c, 0x3e,
@@ -176,6 +197,11 @@ static const uint8_t shiftTblInv[16] = {
 	0, 13, 10, 7, 4, 1, 14, 11, 8, 5, 2, 15, 12, 9, 6, 3
 };
 
+/* no inverse table, because it's only used in the round key expander; the actual key scrambling uses the normal tables */
+static const uint8_t shiftTblBlb3[16] = {
+	0, 4, 8, 12, 1, 5, 9, 13, 2, 6, 10, 14, 3, 7, 11, 15
+};
+
 static const uint8_t rcon[16] = {
 	0x8d, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36, 0x6c, 0xd8, 0xab, 0x4d, 0x9a
 };
@@ -193,6 +219,24 @@ static void subBytesInv(uint8_t* key) {
 		key[i] = sboxInv[key[i]];
 	}
 }
+
+// This xors, rather than straight assigns
+static void subBytesBlb3(uint8_t* key) {
+	unsigned int i;
+	for (i = 0; i < 16; i++) {
+		key[i] ^= sboxBlb3[key[i]];
+	}
+}
+
+#if 0
+// TODO: xor and *then* grab the index? or is this correct?
+static void subBytesInvBlb3(uint8_t* key) {
+	unsigned int i;
+	for (i = 0; i < 16; i++) {
+		key[i] ^= sboxInvBlb3[key[i]];
+	}
+}
+#endif
 
 static void shiftRows(uint8_t* key) {
 	unsigned int i;
@@ -314,6 +358,48 @@ void aesUnscrambleKeyMhy(uint8_t* key, const uint8_t roundKeys[11][16]) {
 	xorCrypt(key, 16, roundKeys[0], 16);
 }
 
+static void roundKeyBlb3(uint8_t* key, const uint8_t* roundKey) {
+	/* TODO Could use optimization. Possible to do with 32-bit ints? */
+	unsigned int i, j;
+	for (i = 0; i < 4; i++) {
+		for (j = 0; j < 4; j++) {
+			key[(i * 4) + j] ^= roundKey[(j * 4) + i];
+		}
+	}
+}
+
+/* These variants use a different S-box, and also do the subBytes and XOR-round-key processes differently. Used in blb3 */
+
+void aesScrambleKeyBlb3(uint8_t* key, const uint8_t roundKeys[11][16]) {
+	unsigned int i;
+	roundKeyBlb3(key, roundKeys[0]);
+	for (i = 1; i < 10; i++) {
+		subBytesBlb3(key);
+		shiftRows(key);
+		mixCols(key);
+		roundKeyBlb3(key, roundKeys[i]);
+	}
+	subBytesBlb3(key);
+	shiftRows(key);
+	roundKeyBlb3(key, roundKeys[10]);
+}
+
+#if 0
+void aesUnscrambleKeyBlb3(uint8_t* key, const uint8_t roundKeys[11][16]) {
+	unsigned int i;
+	roundKeyBlb3(key, roundKeys[10]);
+	shiftRowsInv(key);
+	subBytesInvBlb3(key);
+	for (i = 1; i < 10; i++) {
+		roundKeyBlb3(key, roundKeys[10 - i]);
+		mixColsInv(key);
+		shiftRowsInv(key);
+		subBytesInvBlb3(key);
+	}
+	roundKeyBlb3(key, roundKeys[0]);
+}
+#endif
+
 /* used by mhy1 */
 void aesGetRoundKeys(const uint8_t* key, uint8_t roundKeys[11][16]) {
 	unsigned int b, r, i;
@@ -347,23 +433,68 @@ void aesGetRoundKeys(const uint8_t* key, uint8_t roundKeys[11][16]) {
 	}
 }
 
+/* blb3 variant, there might be room for optimization here */
+void aesGetRoundKeysBlb3(const uint8_t* key, uint8_t roundKeys[11][16]) {
+	unsigned int i, a, b, c, d, e;
+	uint8_t* _roundKeys = (uint8_t*) roundKeys;
+	for (i = 0; i < 16; i++) {
+		_roundKeys[i] = key[shiftTblBlb3[i]];
+	}
+	unsigned int o = 31;
+	for (i = 1; i < 11; i++) {
+		a = sboxBlb3[_roundKeys[o - 20]];
+		b = sboxBlb3[_roundKeys[o - 16]];
+		c = sboxBlb3[_roundKeys[o - 24]] ^ _roundKeys[o - 24] ^ rcon[i] ^ _roundKeys[o - 31];
+		d = sboxBlb3[_roundKeys[o - 28]];
+		e = 0;
+		_roundKeys[o - 15] = c;
+		e = a ^ _roundKeys[o - 20] ^ _roundKeys[o - 27];
+		_roundKeys[o - 11] = e;
+		a = b ^ _roundKeys[o - 16] ^ _roundKeys[o - 23];
+		_roundKeys[o - 7] = a;
+		b = d ^ _roundKeys[o - 28] ^ _roundKeys[o - 19];
+		_roundKeys[o - 3] = b;
+		c = c ^ _roundKeys[o - 30];
+		_roundKeys[o - 14] = c;
+		e = e ^ _roundKeys[o - 26];
+		_roundKeys[o - 10] = e;
+		a = a ^ _roundKeys[o - 22];
+		_roundKeys[o - 6] = a;
+		b = b ^ _roundKeys[o - 18];
+	     _roundKeys[o - 2] = b;
+		c = c ^ _roundKeys[o - 29];
+		_roundKeys[o - 13] = c;
+		e = e ^ _roundKeys[o - 25];
+		_roundKeys[o - 9] = e;
+		a = a ^ _roundKeys[o - 21];
+		_roundKeys[o - 5] = a;
+		b = b ^ _roundKeys[o - 17];
+		_roundKeys[o - 1] = b;
+		_roundKeys[o - 12] = c ^ _roundKeys[o - 28];
+		_roundKeys[o - 8] = e ^ _roundKeys[o - 24];
+		_roundKeys[o - 4] = a ^ _roundKeys[o - 20];
+		_roundKeys[o] = b ^ _roundKeys[o - 16];
+		o += 16;
+	}
+}
+
 static const uint8_t rc4_init_tbl[256] = {
-	 41,  35, 190, 132, 225, 108, 214, 174,  82, 144,  73, 241, 241, 187, 233, 235,
-	179, 166, 219,  60, 135,  12,  62, 153,  36,  94,  13,  28,   6, 183,  71, 222,
-	179,  18,  77, 200,  67, 187, 139, 166,  31,   3,  90, 125,   9,  56,  37,  31,
-	 93, 212, 203, 252, 150, 245,  69,  59,  19,  13, 137,  10,	 28, 219, 174,  50,
-	 32, 154,  80, 238,  64, 120,  54, 253,  18,  73,  50, 246, 158, 125,  73, 220,
-	173,  79,  20, 242,  68,  64, 102, 208, 107, 196,  48, 183,  50,  59, 161,  34,
-	246,  34, 145, 157, 225, 139,  31, 218, 176, 202, 153,   2, 185, 114, 157,  73,
-	 44, 128, 126, 197, 153, 213, 233, 128, 178, 234, 201, 204,  83, 191, 103, 214,
-	191,  20, 214, 126,  45, 220, 142, 102, 131, 239,  87,  73,  97, 255, 105, 143,
-	 97, 205, 209,  30, 157, 156,  22, 114, 114, 230,  29, 240, 132,  79,  74, 119,
-	  2, 215, 232,  57,  44,  83, 203, 201,  18,  30,  51, 116, 158,  12, 244, 213,
-	212, 159, 212, 164,  89, 126,  53, 207,  50,  34, 244, 204, 207, 211, 144,  45,
-	 72, 211, 143, 117, 230, 217,  29,  42, 229, 192, 247,  43, 120, 129, 135,  68,
-	 14,  95,  80,   0, 212,  97, 141, 190, 123,   5,  21,   7,  59,  51, 130,  31,
-	 24, 112, 146, 218, 100,  84, 206, 177, 133,  62, 105,  21, 248,  70, 106,   4,
-	150, 115,  14, 217,  22,  47, 103, 104, 212, 247,  74,  74, 208,  87, 104, 118
+	0x29, 0x23, 0xbe, 0x84, 0xe1, 0x6c, 0xd6, 0xae, 0x52, 0x90, 0x49, 0xf1, 0xf1, 0xbb, 0xe9, 0xeb,
+	0xb3, 0xa6, 0xdb, 0x3c, 0x87, 0x0c, 0x3e, 0x99, 0x24, 0x5e, 0x0d, 0x1c, 0x06, 0xb7, 0x47, 0xde,
+	0xb3, 0x12, 0x4d, 0xc8, 0x43, 0xbb, 0x8b, 0xa6, 0x1f, 0x03, 0x5a, 0x7d, 0x09, 0x38, 0x25, 0x1f,
+	0x5d, 0xd4, 0xcb, 0xfc, 0x96, 0xf5, 0x45, 0x3b, 0x13, 0x0d, 0x89, 0x0a, 0x1c, 0xdb, 0xae, 0x32,
+	0x20, 0x9a, 0x50, 0xee, 0x40, 0x78, 0x36, 0xfd, 0x12, 0x49, 0x32, 0xf6, 0x9e, 0x7d, 0x49, 0xdc,
+	0xad, 0x4f, 0x14, 0xf2, 0x44, 0x40, 0x66, 0xd0, 0x6b, 0xc4, 0x30, 0xb7, 0x32, 0x3b, 0xa1, 0x22,
+	0xf6, 0x22, 0x91, 0x9d, 0xe1, 0x8b, 0x1f, 0xda, 0xb0, 0xca, 0x99, 0x02, 0xb9, 0x72, 0x9d, 0x49,
+	0x2c, 0x80, 0x7e, 0xc5, 0x99, 0xd5, 0xe9, 0x80, 0xb2, 0xea, 0xc9, 0xcc, 0x53, 0xbf, 0x67, 0xd6,
+	0xbf, 0x14, 0xd6, 0x7e, 0x2d, 0xdc, 0x8e, 0x66, 0x83, 0xef, 0x57, 0x49, 0x61, 0xff, 0x69, 0x8f,
+	0x61, 0xcd, 0xd1, 0x1e, 0x9d, 0x9c, 0x16, 0x72, 0x72, 0xe6, 0x1d, 0xf0, 0x84, 0x4f, 0x4a, 0x77,
+	0x02, 0xd7, 0xe8, 0x39, 0x2c, 0x53, 0xcb, 0xc9, 0x12, 0x1e, 0x33, 0x74, 0x9e, 0x0c, 0xf4, 0xd5,
+	0xd4, 0x9f, 0xd4, 0xa4, 0x59, 0x7e, 0x35, 0xcf, 0x32, 0x22, 0xf4, 0xcc, 0xcf, 0xd3, 0x90, 0x2d,
+	0x48, 0xd3, 0x8f, 0x75, 0xe6, 0xd9, 0x1d, 0x2a, 0xe5, 0xc0, 0xf7, 0x2b, 0x78, 0x81, 0x87, 0x44,
+	0x0e, 0x5f, 0x50, 0x00, 0xd4, 0x61, 0x8d, 0xbe, 0x7b, 0x05, 0x15, 0x07, 0x3b, 0x33, 0x82, 0x1f,
+	0x18, 0x70, 0x92, 0xda, 0x64, 0x54, 0xce, 0xb1, 0x85, 0x3e, 0x69, 0x15, 0xf8, 0x46, 0x6a, 0x04,
+	0x96, 0x73, 0x0e, 0xd9, 0x16, 0x2f, 0x67, 0x68, 0xd4, 0xf7, 0x4a, 0x4a, 0xd0, 0x57, 0x68, 0x76
 };
 
 /* modified rc4 used by mhy1, uses a shuffled initial key table and an operation byte index */
@@ -416,6 +547,98 @@ void rc4_dec_mhy(const uint8_t* key, size_t keySz, uint8_t* data, size_t dataSz,
 	memcpy(s, rc4_init_tbl, 256);
 	for (i = 0; i < 256; i++) {
 		t[i] = key[i % keySz];
+	}
+	j = 0;
+	for (i = 0; i < 256; i++) {
+		j = (j + s[i] + t[i]) % 256;
+		x = s[i];
+		y = s[j];
+		s[j] = x;
+		s[i] = y;
+	}
+	j = 0;
+	k = 0;
+	for (i = 0; i < dataSz; i++) {
+		j = (j + 1) % 256;
+		k = (k + s[j]) % 256;
+		x = s[j];
+		y = s[k];
+		s[k] = x;
+		s[j] = y;
+		x = s[k] + s[j];
+		y = s[x % 256];
+		switch (opBytes[j % opBytesSz] % 3) {
+		case 0:
+		default:
+			data[i] ^= y;
+			break;
+		case 1:
+			data[i] += y;
+			break;
+		case 2:
+			data[i] -= y;
+			break;
+		}
+	}
+}
+
+// blb3 variant that sets t slightly differently and reverses decrypt/encrypt with respect to opBytes
+void rc4_blb3(const uint8_t* key, size_t keySz, uint8_t* data, size_t dataSz, const uint8_t* opBytes, size_t opBytesSz) {
+	static uint8_t s[256];
+	static uint8_t t[256];
+	unsigned int i, j, k, x, y;
+	memcpy(s, rc4_init_tbl, 256);
+	for (i = 0; i < 256; i += 2) {
+	/* This is the original:
+		t[i] = key[i & 6];
+		t[i + 1] = key[(i + 1) & 7];
+	Changing it to this (with keySz changed to constant 8) produces identical assembly code, at least on GCC 15.2 aarch64 (specifically the version that comes with Ubuntu 26.04, if that makes any difference at all...) */
+		t[i] = key[(i % keySz) & ~1];
+		t[i + 1] = key[(i + 1) % keySz];
+	}
+	// From here down, it's the same as rc4_mhy()
+	j = 0;
+	for (i = 0; i < 256; i++) {
+		j = (j + s[i] + t[i]) % 256;
+		x = s[i];
+		y = s[j];
+		s[j] = x;
+		s[i] = y;
+	}
+	j = 0;
+	k = 0;
+	for (i = 0; i < dataSz; i++) {
+		j = (j + 1) % 256;
+		k = (k + s[j]) % 256;
+		x = s[j];
+		y = s[k];
+		s[k] = x;
+		s[j] = y;
+		x = s[k] + s[j];
+		y = s[x % 256];
+		switch (opBytes[j % opBytesSz] % 3) {
+		case 0:
+		default:
+			data[i] ^= y;
+			break;
+		case 1:
+			data[i] -= y;
+			break;
+		case 2:
+			data[i] += y;
+			break;
+		}
+	}
+}
+
+void rc4_dec_blb3(const uint8_t* key, size_t keySz, uint8_t* data, size_t dataSz, const uint8_t* opBytes, size_t opBytesSz) {
+	static uint8_t s[256];
+	static uint8_t t[256];
+	unsigned int i, j, k, x, y;
+	memcpy(s, rc4_init_tbl, 256);
+	for (i = 0; i < 256; i += 2) {
+		t[i] = key[(i % keySz) & ~1];
+		t[i + 1] = key[(i + 1) % keySz];
 	}
 	j = 0;
 	for (i = 0; i < 256; i++) {

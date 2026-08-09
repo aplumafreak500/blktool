@@ -19,8 +19,6 @@
 #include "mhy1.h"
 
 /* located in mhy0.c and blk.c */
-extern const uint8_t gf256exp[256];
-extern const uint8_t gf256log[256];
 extern const uint8_t lut[3][16];
 extern const uint8_t key[8];
 extern const uint8_t gf_idx[8];

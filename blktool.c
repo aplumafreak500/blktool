@@ -14,6 +14,7 @@
 #include "blk.h"
 #include "mhy0.h"
 #include "mhy1.h"
+#include "blb3.h"
 #include "mr0k.h"
 #include "ec2b.h"
 #include "mhycrypt.h"
@@ -341,6 +342,82 @@ static unsigned int mhy1_main(unsigned int argc, const char** argv) {
 		return 0;
 	}
 	mhy1_usage();
+	return -1;
+}
+
+static unsigned int blb3_main(unsigned int argc, const char** argv) {
+	if (argc < 4) {
+		//blb3_usage();
+		return -1;
+	}
+	const char* mode = argv[1];
+	const char* in_file = argv[2];
+	const char* out_file = argv[3];
+	uint8_t* buf;
+	size_t bufSz;
+	static char filenameBuf[1024];
+	unsigned int i = 0;
+	int ret;
+	if (strncasecmp(mode, "pack", 4) == 0) {
+		FILE* out_fp = fopen(out_file, "wb");
+		if (out_fp == NULL) {
+			fprintf(stderr, "output file open error: %s\n", strerror(errno));
+			return -1;
+		}
+		unsigned int blb3_cnt;
+		if (argc > 4) {
+			blb3_cnt = strtoul(argv[4], NULL, 10);
+		}
+		else {
+			blb3_cnt = 1;
+		}
+		for (i = 0; i < blb3_cnt; i++) {
+			snprintf(filenameBuf, 1024, "%s.pack%d", in_file, i);
+			ret = pack_blb3(filenameBuf, out_fp);
+			if (ret) {
+				fprintf(stderr, "can't pack blb3 data from packfile(s) %s*\n", filenameBuf);
+				fclose(out_fp);
+				return ret;
+			}
+		}
+		fclose(out_fp);
+		fprintf(stderr, "Sucessfully packed blb3 file %s\n", out_file);
+		return 0;
+	}
+	else if (strncasecmp(mode, "unpack", 6) == 0) {
+		FILE* in_fp = fopen(in_file, "rb");
+		if (in_fp == NULL) {
+			fprintf(stderr, "input file open error: %s\n", strerror(errno));
+			return -1;
+		}
+		fseek(in_fp, 0, SEEK_END);
+		bufSz = ftell(in_fp);
+		fseek(in_fp, 0, SEEK_SET);
+		buf = malloc(bufSz);
+		if (buf == NULL) {
+			fprintf(stderr, "can't allocate buffer\n");
+			return -1;
+		}
+		fread(buf, bufSz, 1, in_fp);
+		fclose(in_fp);
+		fprintf(stderr, "Read from input file %s\n", in_file);
+		uint8_t* next_blb3 = buf;
+		uint8_t* current_blb3 = buf;
+		while (current_blb3 < buf + bufSz) {
+			snprintf(filenameBuf, 1024, "%s.pack%d", out_file, i);
+			fprintf(stderr, "buf 0x%08lx bufSz 0x%08lx eof 0x%08lx current_blb3 0x%08lx file %s\n", (unsigned long) buf, bufSz, (unsigned long) buf + bufSz, (unsigned long) current_blb3, filenameBuf);
+			ret = extract_blb3(current_blb3, filenameBuf, &next_blb3);
+			if (ret) {
+				fprintf(stderr, "can't extract blb3 data at offset 0x%08lx\n", (unsigned long) current_blb3 - (unsigned long) buf);
+				return ret;
+			}
+			current_blb3 = next_blb3;
+			i++;
+		}
+		fprintf(stderr, "Sucessfully extracted blb3 file %s\n", in_file);
+		return 0;
+	}
+	//blb3_usage();
 	return -1;
 }
 
@@ -688,6 +765,9 @@ int main(int argc, const char** argv) {
 	}
 	else if (strncasecmp(mode, "mhy1", 4) == 0) {
 		return mhy1_main(argc - 1, &argv[1]);
+	}
+	else if (strncasecmp(mode, "blb3", 4) == 0) {
+		return blb3_main(argc - 1, &argv[1]);
 	}
 	else if (strncasecmp(mode, "mr0k", 5) == 0) {
 		return mr0k_main(argc - 1, &argv[1]);
