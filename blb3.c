@@ -105,13 +105,13 @@ static int blb3_decrypt(uint8_t* in, size_t _size, const uint8_t* xor_key) {
 		return -1;
 	}
 	size_t size = _size < 128 ? _size : 128;
-	xorCrypt(in, size >= 16 ? 16 : size, xor_key, 16);
-	// The next step is only done if the remaining part of the header is 16 bytes or more. It's yet another modified AES-128-ECB scrambling routine.
+	xorCrypt(in, size > 16 ? 16 : size, xor_key, 16);
+	// The next step is only done if the remaining part of the buffer is 16 bytes or more. It's yet another modified AES-128-ECB scrambling routine.
 	if (size - 0x10 >= 16) {
 		aesGetRoundKeysBlb3(xor_key, blb3AesRoundKeys);
 		aesScrambleKeyBlb3(in, blb3AesRoundKeys);
 		if (size > 16) {
-			// The next step is only done if the header is more than 16 bytes. This time, it's modified RC4
+			// The next step is only done if the buffer is more than 16 bytes. This time, it's modified RC4
 			rc4_blb3(in, 8, in + 0x10, size - 0x10, in + 0x8, 8);
 		}
 		// And finally, it runs the ususal gf256 descrambling routine over the AES data, with a different scrambling table and lookup table than blk/mhy0/mhy1
@@ -191,11 +191,11 @@ int extract_blb3(uint8_t* in_buf, const char* filename, uint8_t** _next_blb3) {
 	int64_t nodeTableOff = le64toh(*(int64_t*)(in_buf + 0x44)) + 0x44;
 	int64_t flagOff = le64toh(*(int64_t*)(in_buf + 0x4c)) + 0x4c;
 	fprintf(stderr, "sz 0x%x lastBlockDecSz 0x%x blobOff 0x%x blobSz 0x%x cmprType %d blobkDecSz 0x%x blockCnt %d nodeCnt %d blockInfoOff 0x%lx nodeInfoOff 0x%lx flagOff 0x%lx\n", filesize, lastBlockDecSz, blob_off, blob_sz, cmpr_type, blockDecSz, blockCount, nodeCount, blockTableOff, nodeTableOff, flagOff);
-#if 0
 	/* These seem to be the same as in ENCR files */
+#if 1
 	if (!((cmpr_type == 0) || (cmpr_type == 2) || (cmpr_type == 3) || (cmpr_type == 5))) {
 		fprintf(stderr, "Error: Only blb3 files compressed with lz4 or lz4hc, or uncompressed, are supported at the moment. (ctype = %d)\n", cmpr_type);
-//		return -1;
+		return -1;
 	}
 #endif
 	blb3_pack_serialized_t pack_meta;
@@ -253,14 +253,26 @@ int extract_blb3(uint8_t* in_buf, const char* filename, uint8_t** _next_blb3) {
 	uint64_t dec_data_off = 0;
 	size_t total_sz = 0;
 	for (i = 0; i < blockCount; i++) {
-		cmprSize = le32toh(*(uint32_t*)(in_buf + blockTableOff + (i * 4)));
-		decSize = i == (blockCount - 1) ? lastBlockDecSz : blockDecSz;
-		fprintf(stderr, "block %d: cmprSize 0x%x uncmpSize 0x%x\n", i, cmprSize, decSize);
+		cmprSize = le32toh(*(uint32_t*)(in_buf + blockTableOff + (i * 4))) - total_sz;
+		decSize = (i + 1) == blockCount ? lastBlockDecSz : blockDecSz;
+		fprintf(stderr, "block %d: off 0x%lx cmprSize 0x%x uncmpSize 0x%x\n", i, data_off, cmprSize, decSize);
 		ret = blb3_decrypt(in_buf + data_off, cmprSize, in_buf + 12);
 		if (ret) {
 			fprintf(stderr, "Decryption error (blocks)\n");
 			return ret;
 		}
+#if 0
+		snprintf(filenameBuf, 1024, "%s.blk%d.decrypt", filename, i);
+		file = fopen(filenameBuf, "wb");
+		if (file == NULL) {
+			fprintf(stderr, "Can't open file %s: %s\n", filenameBuf, strerror(errno));
+			free(blk_data_buf);
+			return -1;
+		}
+		fwrite(in_buf + data_off, cmprSize, 1, file);
+		fclose(file);
+		file = NULL;
+#endif
 		if (cmpr_type == 0) {
 			memcpy((blk_data_buf + dec_data_off), (in_buf + data_off), cmprSize);
 		}
