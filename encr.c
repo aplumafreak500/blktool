@@ -337,7 +337,6 @@ int pack_encr(const char* in_filename, FILE* out_fp) {
 		}
 		s_cab[i].blk_off = cab_blk_off;
 		s_cab[i].blk_sz = cab_blk_sz;
-		cab_blk_off += cab_blk_sz;
 	}
 	FILE* tmp_blk_fp;
 	snprintf(filenameBuf, 1024, "%s.blocks", in_filename);
@@ -391,7 +390,7 @@ int pack_encr(const char* in_filename, FILE* out_fp) {
 			cab_blk_off += blk_sz;
 		}
 		blocks[i][1] = blk_sz;
-		fread(dec_buf, 0x20000, 1, in_fp[j]);
+		fread(dec_buf, 1, 0x20000, in_fp[j]);
 		//read = LZ4_compress_default((const char*) dec_buf, (char*) (cmp_buf + 12), blk_sz, 0x4fff4);
 		read = LZ4_compress_HC((const char*) dec_buf, (char*) cmp_buf, blk_sz, 0x50000, 12);
 		if (read < 0) {
@@ -404,6 +403,7 @@ int pack_encr(const char* in_filename, FILE* out_fp) {
 		written += fwrite(cmp_buf, 1, read, tmp_blk_fp);
 		if (cab_blk_off == 0) {
 			fclose(in_fp[j]);
+			in_fp[j] = NULL;
 			j++;
 		}
 	}
@@ -434,7 +434,7 @@ int pack_encr(const char* in_filename, FILE* out_fp) {
 		*(uint64_t*)(hdr_buf + cab_off + 8) = htobe64(s_cab[i].blk_sz);
 		*(uint32_t*)(hdr_buf + cab_off + 16) = htobe32(s_cab[i].flags);
 		cab_name_sz = strnlen(s_cab[i].name, 256) + 1;
-		strncpy((char*)(hdr_buf + cab_off + 20), s_cab[i].name, 256);
+		strncpy((char*)(hdr_buf + cab_off + 20), s_cab[i].name, cab_name_sz);
 		hdr_sz += 20 + cab_name_sz;
 		cab_off += 20 + cab_name_sz;
 	}
