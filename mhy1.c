@@ -166,7 +166,7 @@ int extract_mhy1(uint8_t* in_buf, const char* filename, uint8_t** _next_mhy1) {
 		fprintf(stderr, "Decryption error (header)\n");
 		return ret;
 	}
-#if 1
+#if 0
 	snprintf(filenameBuf, 1024, "%s.hdr_decrypt", filename);
 	file = fopen(filenameBuf, "wb");
 	if (file == NULL) {
@@ -189,7 +189,7 @@ int extract_mhy1(uint8_t* in_buf, const char* filename, uint8_t** _next_mhy1) {
 		free(hdr_buf);
 		return ret;
 	}
-#if 1
+#if 0
 	snprintf(filenameBuf, 1024, "%s.hdr_decomp", filename);
 	file = fopen(filenameBuf, "wb");
 	if (file == NULL) {
@@ -284,7 +284,7 @@ int extract_mhy1(uint8_t* in_buf, const char* filename, uint8_t** _next_mhy1) {
 			free(data_buf);
 			return -1;
 		}
-#if 1
+#if 0
 		snprintf(filenameBuf, 1024, "%s.blk%d.decrypt", filename, i);
 		file = fopen(filenameBuf, "wb");
 		if (file == NULL) {
@@ -403,6 +403,7 @@ int pack_mhy1(const char* in_filename, FILE* out_fp) {
 	if (cab_cnt >= 256) cab_cnt = 256;
 	cab_serialized_t s_cab[cab_cnt];
 	FILE* infp[cab_cnt];
+	uint32_t total_blk_sz = 0;
 	for (i = 0; i < cab_cnt; i++) {
 		snprintf(filenameBuf, 1024, "%s.cab%d", in_filename, i);
 		infp[i] = fopen(filenameBuf, "rb");
@@ -414,13 +415,7 @@ int pack_mhy1(const char* in_filename, FILE* out_fp) {
 		fseek(infp[i], 0, SEEK_END);
 		cab_blk_sz = ftell(infp[i]);
 		fseek(infp[i], 0, SEEK_SET);
-		// TODO start move outside the loop
-		cab_blk_cnt = cab_blk_sz / 0x20000;
-		if ((cab_blk_sz % 0x20000) != 0) {
-			cab_blk_cnt++;
-		}
-		blk_cnt += cab_blk_cnt;
-		// end
+		total_blk_sz += cab_blk_sz;
 		snprintf(filenameBuf, 1024, "%s.cab%d.hdr", in_filename, i);
 		infp2 = fopen(filenameBuf, "rb");
 		if (infp2 != NULL) {
@@ -443,6 +438,11 @@ int pack_mhy1(const char* in_filename, FILE* out_fp) {
 		s_cab[i].blk_sz = cab_blk_sz;
 		cab_blk_off += cab_blk_sz;
 	}
+	cab_blk_cnt = total_blk_sz / 0x20000;
+	if ((total_blk_sz % 0x20000) != 0) {
+		cab_blk_cnt++;
+	}
+	blk_cnt = cab_blk_cnt;
 	FILE* tmp_blk_fp;
 	snprintf(filenameBuf, 1024, "%s.blocks", in_filename);
 	tmp_blk_fp = fopen(filenameBuf, "wb+");
@@ -462,42 +462,65 @@ int pack_mhy1(const char* in_filename, FILE* out_fp) {
 	j = 0;
 	ssize_t written = 0;
 	uint8_t blk_key_buf[17];
-	for (i = 0; i < blk_cnt; i++) {
-		snprintf(filenameBuf, 1024, "%s.blk%d.key", in_filename, i);
-		infp2 = fopen(filenameBuf, "rb");
-		if (infp2 != NULL) {
-			fread(blk_key_buf, 17, 1, infp2);
-			fclose(infp2);
-			infp2 = NULL;
+	uint32_t remaining_sz = 0x20000;
+	uint32_t read_sz, read_off;
+	blk_sz = 0;
+	for (i = 0; i < blk_cnt;) {
+		if (remaining_sz <= 0 || remaining_sz >= 0x20000) {
+			snprintf(filenameBuf, 1024, "%s.blk%d.key", in_filename, i);
+			infp2 = fopen(filenameBuf, "rb");
+			if (infp2 != NULL) {
+				fread(blk_key_buf, 17, 1, infp2);
+				fclose(infp2);
+				infp2 = NULL;
+			}
+			else {
+				getrandom(blk_key_buf + 4, 8, 0);
+				// TODO true for all blocks?
+				// TODO is the number allowed to carry or does only the lower byte wrap around?
+				*(uint32_t*) (&blk_key_buf[0]) = htole32(0xdadadada + i);
+				memset(blk_key_buf + 12, 0, 5);
+			}
+			memcpy(cmp_buf, blk_key_buf, 4);
+			((uint32_t*) cmp_buf)[1] = htobe32(0x6d68796e);
+			((uint32_t*) cmp_buf)[2] = htobe32(0x65776563);
+			((uint32_t*) cmp_buf)[3] = htole32(1);
+			((uint32_t*) cmp_buf)[4] = htole32(~0);
+			memcpy(cmp_buf + 20, blk_key_buf + 4, 8);
+			memcpy(blocks[i].extra, blk_key_buf + 12, 5);
+			remaining_sz = 0x20000;
+			blk_sz = 0;
+		}
+		if (s_cab[j].blk_sz - cab_blk_off <= remaining_sz) {
+			blk_sz += s_cab[j].blk_sz - cab_blk_off;
+			remaining_sz -= s_cab[j].blk_sz - cab_blk_off;
+			read_sz = s_cab[j].blk_sz - cab_blk_off;
+			cab_blk_off = 0;
+		}
+		else if (remaining_sz > 0 && remaining_sz < 0x20000 && s_cab[j].blk_sz - cab_blk_off > remaining_sz) {
+			cab_blk_off += remaining_sz;
+			blk_sz += remaining_sz;
+			read_sz = remaining_sz;
+			remaining_sz = 0;
 		}
 		else {
-			getrandom(blk_key_buf + 4, 8, 0);
-			// TODO true for all blocks?
-			// TODO is the number allowed to carry or does only the lower byte wrap around?
-			*(uint32_t*) (&blk_key_buf[0]) = htole32(0xdadadada + i);
-			memset(blk_key_buf + 12, 0, 5);
-		}
-		memcpy(cmp_buf, blk_key_buf, 4);
-		((uint32_t*) cmp_buf)[1] = htobe32(0x6d68796e);
-		((uint32_t*) cmp_buf)[2] = htobe32(0x65776563);
-		((uint32_t*) cmp_buf)[3] = htole32(1);
-		((uint32_t*) cmp_buf)[4] = htole32(~0);
-		memcpy(cmp_buf + 20, blk_key_buf + 4, 8);
-		memcpy(blocks[i].extra, blk_key_buf + 12, 5);
-		if (s_cab[j].blk_sz <= 0x20000) {
-			cab_blk_off = 0;
-			blk_sz = s_cab[j].blk_sz;
-		}
-		else if (cab_blk_off + 0x20000 >= s_cab[j].blk_sz) {
-			cab_blk_off = 0;
-			blk_sz = s_cab[j].blk_sz % 0x20000;
-		}
-		else {
-			blk_sz = 0x20000;
+			blk_sz += remaining_sz;
 			cab_blk_off += blk_sz;
+			remaining_sz = 0;
+			read_sz = 0x20000;
 		}
 		blocks[i].dec_sz = blk_sz;
-		fread(dec_buf, 0x20000, 1, infp[j]);
+		fread(dec_buf + read_off, 1, read_sz, infp[j]);
+		if (cab_blk_off <= 0) {
+			fclose(infp[j]);
+			j++;
+		}
+		if (!(j >= cab_cnt)) {
+			if (remaining_sz > 0 && remaining_sz < 0x20000) {
+				read_off += read_sz;
+				continue;
+			}
+		}
 		//ret = LZ4_compress_default((const char*) dec_buf, (char*) (cmp_buf + 12), blk_sz, 0x4fff4);
 		ret = LZ4_compress_HC((const char*) dec_buf, (char*) (cmp_buf + 28), blk_sz, 0x4ffe4, 28);
 		if (ret < 0) {
@@ -509,10 +532,8 @@ int pack_mhy1(const char* in_filename, FILE* out_fp) {
 		blocks[i].cmp_sz = ret + 28;
 		mhy1_encrypt(cmp_buf, ret + 28, 0);
 		written += fwrite(cmp_buf, 1, ret + 28, tmp_blk_fp);
-		if (cab_blk_off == 0) {
-			fclose(infp[j]);
-			j++;
-		}
+		read_off = 0;
+		i++;
 	}
 	fflush(tmp_blk_fp);
 	fseek(tmp_blk_fp, 0, SEEK_SET);

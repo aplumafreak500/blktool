@@ -290,6 +290,7 @@ int pack_encr(const char* in_filename, FILE* out_fp) {
 	encr_cab_serialized_t s_cab[cab_cnt];
 	FILE* in_fp[cab_cnt];
 	unsigned int i;
+	uint32_t total_blk_sz = 0;
 	for (i = 0; i < cab_cnt; i++) {
 		snprintf(filenameBuf, 1024, "%s.cab%d", in_filename, i);
 		in_fp[i] = fopen(filenameBuf, "rb");
@@ -300,13 +301,7 @@ int pack_encr(const char* in_filename, FILE* out_fp) {
 		fseek(in_fp[i], 0, SEEK_END);
 		cab_blk_sz = ftell(in_fp[i]);
 		fseek(in_fp[i], 0, SEEK_SET);
-		// TODO start move outside the loop
-		cab_blk_cnt = cab_blk_sz / 0x20000;
-		if ((cab_blk_sz % 0x20000) != 0) {
-			cab_blk_cnt++;
-		}
-		blk_cnt += cab_blk_cnt;
-		// end
+		total_blk_sz += cab_blk_sz;
 		snprintf(filenameBuf, 1024, "%s.cab%d.hdr", in_filename, i);
 		in_fp2 = fopen(filenameBuf, "rb");
 		if (in_fp2 != NULL) {
@@ -325,7 +320,13 @@ int pack_encr(const char* in_filename, FILE* out_fp) {
 		}
 		s_cab[i].blk_off = cab_blk_off;
 		s_cab[i].blk_sz = cab_blk_sz;
+		cab_blk_off += cab_blk_sz;
 	}
+	cab_blk_cnt = total_blk_sz / 0x20000;
+	if ((total_blk_sz % 0x20000) != 0) {
+		cab_blk_cnt++;
+	}
+	blk_cnt = cab_blk_cnt;
 	FILE* tmp_blk_fp;
 	snprintf(filenameBuf, 1024, "%s.blocks", in_filename);
 	tmp_blk_fp = fopen(filenameBuf, "wb+");
@@ -351,34 +352,57 @@ int pack_encr(const char* in_filename, FILE* out_fp) {
 	ssize_t read;
 	unsigned int j = 0;
 	uint32_t blocks[blk_cnt][3]; // compressed, then decompressed sizes, then flags, for each block
-	for (i = 0; i < blk_cnt; i++) {
-		snprintf(filenameBuf, 1024, "%s.blk%d.key", in_filename, i);
-		in_fp2 = fopen(filenameBuf, "rb");
-		if (in_fp2 != NULL) {
-			read = fread(blk_key_buf, 18, 1, in_fp2);
-			fclose(in_fp2);
-			in_fp2 = NULL;
-			//blk_flags = *(uint16_t*) blk_key_buf;
-			blk_flags = 0x3;
+	uint32_t remaining_sz = 0x20000;
+	uint32_t read_sz, read_off;
+	blk_sz = 0;
+	cab_blk_off = 0;
+	for (i = 0; i < blk_cnt;) {
+		if (remaining_sz <= 0 || remaining_sz >= 0x20000) {
+			snprintf(filenameBuf, 1024, "%s.blk%d.key", in_filename, i);
+			in_fp2 = fopen(filenameBuf, "rb");
+			if (in_fp2 != NULL) {
+				read = fread(blk_key_buf, 18, 1, in_fp2);
+				fclose(in_fp2);
+				in_fp2 = NULL;
+				//blk_flags = *(uint16_t*) blk_key_buf;
+				blk_flags = 0x3;
+			}
+			else {
+				blk_flags = 0x3;
+				read = 2;
+			}
+			remaining_sz = 0x20000;
+			blk_sz = 0;
+		}
+		if (s_cab[j].blk_sz - cab_blk_off <= remaining_sz) {
+			blk_sz += s_cab[j].blk_sz - cab_blk_off;
+			remaining_sz -= s_cab[j].blk_sz - cab_blk_off;
+			read_sz = s_cab[j].blk_sz - cab_blk_off;
+			cab_blk_off = 0;
+		}
+		else if (remaining_sz > 0 && remaining_sz < 0x20000 && s_cab[j].blk_sz - cab_blk_off > remaining_sz) {
+			cab_blk_off += remaining_sz;
+			blk_sz += remaining_sz;
+			read_sz = remaining_sz;
+			remaining_sz = 0;
 		}
 		else {
-			blk_flags = 0x3;
-			read = 2;
-		}
-		if (s_cab[j].blk_sz <= 0x20000) {
-			cab_blk_off = 0;
-			blk_sz = s_cab[j].blk_sz;
-		}
-		else if (cab_blk_off + 0x20000 >= s_cab[j].blk_sz) {
-			cab_blk_off = 0;
-			blk_sz = s_cab[j].blk_sz % 0x20000;
-		}
-		else {
-			blk_sz = 0x20000;
+			blk_sz += remaining_sz;
 			cab_blk_off += blk_sz;
+			remaining_sz = 0;
+			read_sz = 0x20000;
 		}
-		blocks[i][1] = blk_sz;
-		fread(dec_buf, 1, 0x20000, in_fp[j]);
+		fread(dec_buf + read_off, 1, read_sz, in_fp[j]);
+		if (cab_blk_off <= 0) {
+			fclose(in_fp[j]);
+			j++;
+		}
+		if (!(j >= cab_cnt)) {
+			if (remaining_sz > 0 && remaining_sz < 0x20000) {
+				read_off += read_sz;
+				continue;
+			}
+		}
 		//read = LZ4_compress_default((const char*) dec_buf, (char*) (cmp_buf + 12), blk_sz, 0x4fff4);
 		read = LZ4_compress_HC((const char*) dec_buf, (char*) cmp_buf, blk_sz, 0x50000, 12);
 		if (read < 0) {
@@ -386,14 +410,12 @@ int pack_encr(const char* in_filename, FILE* out_fp) {
 			return -1;
 		}
 		blocks[i][0] = read;
+		blocks[i][1] = blk_sz;
 		blocks[i][2] = blk_flags;
 		//mhy0_encrypt(cmp_buf, 0);
 		written += fwrite(cmp_buf, 1, read, tmp_blk_fp);
-		if (cab_blk_off == 0) {
-			fclose(in_fp[j]);
-			in_fp[j] = NULL;
-			j++;
-		}
+		read_off = 0;
+		i++;
 	}
 	fflush(tmp_blk_fp);
 	fseek(tmp_blk_fp, 0, SEEK_SET);

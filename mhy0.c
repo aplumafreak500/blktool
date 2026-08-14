@@ -445,6 +445,7 @@ int pack_mhy0(const char* in_filename, FILE* out_fp) {
 	if (cab_cnt >= 256) cab_cnt = 256;
 	cab_serialized_t s_cab[cab_cnt];
 	FILE* infp[cab_cnt];
+	uint32_t total_blk_sz = 0;
 	for (i = 0; i < cab_cnt; i++) {
 		snprintf(filenameBuf, 1024, "%s.cab%d", in_filename, i);
 		infp[i] = fopen(filenameBuf, "rb");
@@ -456,13 +457,7 @@ int pack_mhy0(const char* in_filename, FILE* out_fp) {
 		fseek(infp[i], 0, SEEK_END);
 		cab_blk_sz = ftell(infp[i]);
 		fseek(infp[i], 0, SEEK_SET);
-		// TODO start move outside the loop
-		cab_blk_cnt = cab_blk_sz / 0x20000;
-		if ((cab_blk_sz % 0x20000) != 0) {
-			cab_blk_cnt++;
-		}
-		blk_cnt += cab_blk_cnt;
-		// end
+		total_blk_sz += cab_blk_sz;
 		snprintf(filenameBuf, 1024, "%s.cab%d.hdr", in_filename, i);
 		infp2 = fopen(filenameBuf, "rb");
 		if (infp2 != NULL) {
@@ -485,6 +480,11 @@ int pack_mhy0(const char* in_filename, FILE* out_fp) {
 		s_cab[i].blk_sz = cab_blk_sz;
 		cab_blk_off += cab_blk_sz;
 	}
+	cab_blk_cnt = total_blk_sz / 0x20000;
+	if ((total_blk_sz % 0x20000) != 0) {
+		cab_blk_cnt++;
+	}
+	blk_cnt = cab_blk_cnt;
 	FILE* tmp_blk_fp;
 	snprintf(filenameBuf, 1024, "%s.blocks", in_filename);
 	tmp_blk_fp = fopen(filenameBuf, "wb+");
@@ -504,37 +504,61 @@ int pack_mhy0(const char* in_filename, FILE* out_fp) {
 	j = 0;
 	ssize_t written = 0;
 	uint8_t blk_key_buf[17];
-	for (i = 0; i < blk_cnt; i++) {
-		snprintf(filenameBuf, 1024, "%s.blk%d.key", in_filename, i);
-		infp2 = fopen(filenameBuf, "rb");
-		if (infp2 != NULL) {
-			fread(blk_key_buf, 17, 1, infp2);
-			fclose(infp2);
-			infp2 = NULL;
+	uint32_t remaining_sz = 0x20000;
+	uint32_t read_sz, read_off;
+	blk_sz = 0;
+	for (i = 0; i < blk_cnt;) {
+		//if (j >= cab_cnt) break;
+		if (remaining_sz <= 0 || remaining_sz >= 0x20000) {
+			snprintf(filenameBuf, 1024, "%s.blk%d.key", in_filename, i);
+			infp2 = fopen(filenameBuf, "rb");
+			if (infp2 != NULL) {
+				fread(blk_key_buf, 17, 1, infp2);
+				fclose(infp2);
+				infp2 = NULL;
+			}
+			else {
+				getrandom(blk_key_buf + 4, 8, 0);
+				// TODO true for all blocks?
+				// TODO is the number allowed to carry or does only the lower byte wrap around?
+				*(uint32_t*) (&blk_key_buf[0]) = htole32(0xdadadada + i);
+				memset(blk_key_buf + 12, 0, 5);
+			}
+			memcpy(cmp_buf, blk_key_buf, 12);
+			memcpy(blocks[i].extra, blk_key_buf + 12, 5);
+			remaining_sz = 0x20000;
+			blk_sz = 0;
+		}
+		if (s_cab[j].blk_sz - cab_blk_off <= remaining_sz) {
+			blk_sz += s_cab[j].blk_sz - cab_blk_off;
+			remaining_sz -= s_cab[j].blk_sz - cab_blk_off;
+			read_sz = s_cab[j].blk_sz - cab_blk_off;
+			cab_blk_off = 0;
+		}
+		else if (remaining_sz > 0 && remaining_sz < 0x20000 && s_cab[j].blk_sz - cab_blk_off > remaining_sz) {
+			cab_blk_off += remaining_sz;
+			blk_sz += remaining_sz;
+			read_sz = remaining_sz;
+			remaining_sz = 0;
 		}
 		else {
-			getrandom(blk_key_buf + 4, 8, 0);
-			// TODO true for all blocks?
-			// TODO is the number allowed to carry or does only the lower byte wrap around?
-			*(uint32_t*) (&blk_key_buf[0]) = htole32(0xdadadada + i);
-			memset(blk_key_buf + 12, 0, 5);
-		}
-		memcpy(cmp_buf, blk_key_buf, 12);
-		memcpy(blocks[i].extra, blk_key_buf + 12, 5);
-		if (s_cab[j].blk_sz <= 0x20000) {
-			cab_blk_off = 0;
-			blk_sz = s_cab[j].blk_sz;
-		}
-		else if (cab_blk_off + 0x20000 >= s_cab[j].blk_sz) {
-			cab_blk_off = 0;
-			blk_sz = s_cab[j].blk_sz % 0x20000;
-		}
-		else {
-			blk_sz = 0x20000;
+			blk_sz += remaining_sz;
 			cab_blk_off += blk_sz;
+			remaining_sz = 0;
+			read_sz = 0x20000;
 		}
 		blocks[i].dec_sz = blk_sz;
-		fread(dec_buf, 0x20000, 1, infp[j]);
+		fread(dec_buf + read_off, 1, read_sz, infp[j]);
+		if (cab_blk_off <= 0) {
+			fclose(infp[j]);
+			j++;
+		}
+		if (!(j >= cab_cnt)) {
+			if (remaining_sz > 0 && remaining_sz < 0x20000) {
+				read_off += read_sz;
+				continue;
+			}
+		}
 		//ret = LZ4_compress_default((const char*) dec_buf, (char*) (cmp_buf + 12), blk_sz, 0x4fff4);
 		ret = LZ4_compress_HC((const char*) dec_buf, (char*) (cmp_buf + 12), blk_sz, 0x4fff4, 12);
 		if (ret < 0) {
@@ -546,10 +570,8 @@ int pack_mhy0(const char* in_filename, FILE* out_fp) {
 		blocks[i].cmp_sz = ret + 12;
 		mhy0_encrypt(cmp_buf, 0);
 		written += fwrite(cmp_buf, 1, ret + 12, tmp_blk_fp);
-		if (cab_blk_off == 0) {
-			fclose(infp[j]);
-			j++;
-		}
+		read_off = 0;
+		i++;
 	}
 	fflush(tmp_blk_fp);
 	fseek(tmp_blk_fp, 0, SEEK_SET);
