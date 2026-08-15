@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <endian.h>
+#include <sys/random.h>
 #include "mhycrypt.h"
 #include "lz4hc.h"
 #include "blb3.h"
@@ -130,6 +131,45 @@ static int blb3_decrypt(uint8_t* in, size_t _size, const uint8_t* xor_key) {
 	return 0;
 }
 
+static int blb3_encrypt(uint8_t* in, size_t _size, const uint8_t* xor_key) {
+	unsigned int blb3ScrambleTblIdx;
+	uint8_t q, v, keyIdx;
+	size_t j, k, l;
+	if (in == NULL) {
+		return -1;
+	}
+	size_t size = _size < 128 ? _size : 128;
+	uint8_t t[16];
+	if (size - 0x10 >= 16) {
+		// First step: gf256 scrambling, only if the size is 16 or more
+		for (j = 0; j < 3; j++) {
+			for (k = 0; k < 16; k++) {
+				v = lut[j][k];
+				keyIdx = k % 8;
+				q = key[keyIdx] ^ in[k];
+				for (l = 0; l < 256; l++) {
+					blb3ScrambleTblIdx = blb3ScrambleTbl[((k & 3) << 8) | l];
+					if (blb3ScrambleTblIdx == q) {
+						break;
+					}
+				}
+				t[v] = gf256div(l, gf_idx[keyIdx]);
+			}
+			memcpy(in, t, 16);
+		}
+		// Next step: RC4, if the buffer exceeds 16 bytes
+		if (size > 16) {
+			rc4_dec_blb3(in, 8, in + 16, size - 16, in + 8, 8);
+		}
+		// Next step: AES-128-ECB
+		aesGetRoundKeysBlb3(xor_key, blb3AesRoundKeys);
+		aesUnscrambleKeyBlb3(in, blb3AesRoundKeys);
+	}
+	// And the final touch: XOR
+	xorCrypt(in, size > 16 ? 16 : size, xor_key, 16);
+	return 0;
+}
+
 typedef struct {
 	char name[256];
 	uint32_t blk_off;
@@ -190,7 +230,7 @@ int extract_blb3(uint8_t* in_buf, const char* filename, uint8_t** _next_blb3) {
 	int64_t blockTableOff = le64toh(*(int64_t*)(in_buf + 0x3c)) + 0x3c;
 	int64_t nodeTableOff = le64toh(*(int64_t*)(in_buf + 0x44)) + 0x44;
 	int64_t flagOff = le64toh(*(int64_t*)(in_buf + 0x4c)) + 0x4c;
-	fprintf(stderr, "sz 0x%x lastBlockDecSz 0x%x blobOff 0x%x blobSz 0x%x cmprType %d blobkDecSz 0x%x blockCnt %d nodeCnt %d blockInfoOff 0x%lx nodeInfoOff 0x%lx flagOff 0x%lx\n", filesize, lastBlockDecSz, blob_off, blob_sz, cmpr_type, blockDecSz, blockCount, nodeCount, blockTableOff, nodeTableOff, flagOff);
+	fprintf(stderr, "sz 0x%x lastBlockDecSz 0x%x blobOff 0x%x blobSz 0x%x cmprType %d blockDecSz 0x%x blockCnt %d nodeCnt %d blockInfoOff 0x%lx nodeInfoOff 0x%lx flagOff 0x%lx\n", filesize, lastBlockDecSz, blob_off, blob_sz, cmpr_type, blockDecSz, blockCount, nodeCount, blockTableOff, nodeTableOff, flagOff);
 	/* These seem to be the same as in ENCR files */
 #if 1
 	if (!((cmpr_type == 0) || (cmpr_type == 2) || (cmpr_type == 3) || (cmpr_type == 5))) {
@@ -305,6 +345,232 @@ int extract_blb3(uint8_t* in_buf, const char* filename, uint8_t** _next_blb3) {
 	return 0;
 }
 
+// TODO: Block size shouldn't be hardcoded here; it's a header field we can read from s_pack.block_sz_shift
 int pack_blb3(const char* in_filename, FILE* out_fp) {
-	return -128;
+	if (in_filename == NULL || out_fp == NULL) {
+		return -1;
+	}
+	FILE* in_fp2;
+	static char filenameBuf[1024];
+	uint32_t cab_cnt, cab_blk_cnt, hdr_flags;
+	uint32_t blk_cnt = 0;
+	uint64_t cab_blk_off = 0;
+	uint64_t cab_blk_sz, blk_sz, cmp_buf_off;
+	size_t cmp_buf_sz;
+	blb3_pack_serialized_t s_pack;
+	snprintf(filenameBuf, 1024, "%s.hdr", in_filename);
+	in_fp2 = fopen(filenameBuf, "rb");
+	if (in_fp2 == NULL) {
+		fprintf(stderr, "Can't open file %s: %s\n", filenameBuf, strerror(errno));
+#if 0
+		return -1;
+#else
+		fprintf(stderr, "Assuming 1 cab file present, lz4hc compression, 128k block size\n");
+		s_pack.cab_count = htobe32(1);
+		s_pack.unk0x8 = htobe32(5);
+		s_pack.block_sz_shift = htobe32(17);
+		s_pack.cmpr_type = htobe32(3);
+		//getrandom(s_pack.key, 16, 0);
+		memset(s_pack.key, 0, 16);
+#endif
+	}
+	else {
+		fread(&s_pack, 1, sizeof(blb3_pack_serialized_t), in_fp2);
+		fclose(in_fp2);
+		in_fp2 = NULL;
+	}
+	cab_cnt = be32toh(s_pack.cab_count);
+	if (cab_cnt >= 256) cab_cnt = 256;
+	blb3_cab_serialized_t s_cab[cab_cnt];
+	FILE* in_fp[cab_cnt];
+	unsigned int i;
+	uint32_t total_blk_sz = 0;
+	for (i = 0; i < cab_cnt; i++) {
+		snprintf(filenameBuf, 1024, "%s.cab%d", in_filename, i);
+		in_fp[i] = fopen(filenameBuf, "rb");
+		if (in_fp[i] == NULL) {
+			fprintf(stderr, "Can't open file %s: %s\n", filenameBuf, strerror(errno));
+			return -1;
+		}
+		fseek(in_fp[i], 0, SEEK_END);
+		cab_blk_sz = ftell(in_fp[i]);
+		fseek(in_fp[i], 0, SEEK_SET);
+		total_blk_sz += cab_blk_sz;
+		snprintf(filenameBuf, 1024, "%s.cab%d.hdr", in_filename, i);
+		in_fp2 = fopen(filenameBuf, "rb");
+		if (in_fp2 != NULL) {
+			fread(&s_cab[i], sizeof(blb3_cab_serialized_t), 1, in_fp2);
+			in_fp2 = NULL;
+		}
+		else {
+#ifndef NDEBUG
+			memset(&s_cab[i], 0, sizeof(s_cab[i]));
+#endif
+			uint64_t cab_name_buf[2];
+			// TODO actually random, or an MD2/4/5 sum (and if so, of what)?
+			getrandom(cab_name_buf, sizeof(uint64_t) * 2, 0);
+			snprintf(s_cab[i].name, 256, "CAB-%016llx%016llx", (unsigned long long) htobe64(cab_name_buf[0]), (unsigned long long) htobe64(cab_name_buf[1]));
+			s_cab[i].flag = 0;
+		}
+		s_cab[i].blk_off = cab_blk_off;
+		s_cab[i].blk_sz = cab_blk_sz;
+		cab_blk_off += cab_blk_sz;
+	}
+	cab_blk_cnt = total_blk_sz / 0x20000;
+	if ((total_blk_sz % 0x20000) != 0) {
+		cab_blk_cnt++;
+	}
+	blk_cnt = cab_blk_cnt;
+	FILE* tmp_blk_fp;
+	snprintf(filenameBuf, 1024, "%s.blocks", in_filename);
+	tmp_blk_fp = fopen(filenameBuf, "wb+");
+	if (tmp_blk_fp == NULL) {
+		fprintf(stderr, "Can't open file %s: %s\n", filenameBuf, strerror(errno));
+		return -1;
+	}
+	uint8_t* dec_buf = malloc(0x20000);
+	if (dec_buf == NULL) {
+		fprintf(stderr, "Can't allocate block buffer\n");
+		return -1;
+	}
+	uint8_t* cmp_buf = malloc(0x50000);
+	if (cmp_buf == NULL) {
+		fprintf(stderr, "Can't allocate block compression buffer\n");
+		free(dec_buf);
+		return -1;
+	}
+	ssize_t written = 0;
+	uint8_t blk_key_buf[18];
+	uint16_t blk_flags;
+	const uint8_t* blk_key = (const uint8_t*) (&blk_key_buf[2]);
+	ssize_t read;
+	unsigned int j = 0;
+	uint32_t blocks[blk_cnt][2]; // compressed, then decompressed sizes for each block
+	uint32_t remaining_sz = 0x20000;
+	uint32_t read_sz, read_off;
+	blk_sz = 0;
+	cab_blk_off = 0;
+	for (i = 0; i < blk_cnt;) {
+		if (remaining_sz <= 0 || remaining_sz >= 0x20000) {
+			remaining_sz = 0x20000;
+			blk_sz = 0;
+		}
+		if (s_cab[j].blk_sz - cab_blk_off <= remaining_sz) {
+			blk_sz += s_cab[j].blk_sz - cab_blk_off;
+			remaining_sz -= s_cab[j].blk_sz - cab_blk_off;
+			read_sz = s_cab[j].blk_sz - cab_blk_off;
+			cab_blk_off = 0;
+		}
+		else if (remaining_sz > 0 && remaining_sz < 0x20000 && s_cab[j].blk_sz - cab_blk_off > remaining_sz) {
+			cab_blk_off += remaining_sz;
+			blk_sz += remaining_sz;
+			read_sz = remaining_sz;
+			remaining_sz = 0;
+		}
+		else {
+			blk_sz += remaining_sz;
+			cab_blk_off += blk_sz;
+			remaining_sz = 0;
+			read_sz = 0x20000;
+		}
+		fread(dec_buf + read_off, 1, read_sz, in_fp[j]);
+		if (cab_blk_off <= 0) {
+			fclose(in_fp[j]);
+			j++;
+		}
+		if (!(j >= cab_cnt)) {
+			if (remaining_sz > 0 && remaining_sz < 0x20000) {
+				read_off += read_sz;
+				continue;
+			}
+		}
+		//read = LZ4_compress_default((const char*) dec_buf, (char*) (cmp_buf + 12), blk_sz, 0x4fff4);
+		read = LZ4_compress_HC((const char*) dec_buf, (char*) cmp_buf, blk_sz, 0x50000, 12);
+		if (read < 0) {
+			fprintf(stderr, "Can't compress block %d\n", i);
+			return -1;
+		}
+		blocks[i][0] = read;
+		blocks[i][1] = blk_sz;
+		blb3_encrypt(cmp_buf, read, s_pack.key);
+		written += fwrite(cmp_buf, 1, read, tmp_blk_fp);
+		read_off = 0;
+		i++;
+	}
+	fflush(tmp_blk_fp);
+	fseek(tmp_blk_fp, 0, SEEK_SET);
+	free(cmp_buf);
+	unsigned int hdr_sz = 60 + (blk_cnt * 4) + (cab_cnt * 16);
+	uint8_t* hdr_buf = malloc(hdr_sz + 0x1c + (256 * cab_cnt));
+		if (hdr_buf == NULL) {
+		fprintf(stderr, "Can't allocate header buffer\n");
+		return -1;
+	}
+	*(uint32_t*) hdr_buf = htobe32(0x426c6203);
+	*(uint32_t*)(hdr_buf + 0x8) = htobe32(s_pack.unk0x8);
+	memcpy(hdr_buf + 0xc, s_pack.key, 16);
+	*(uint32_t*)(hdr_buf + 0x24) = htole32(0); // Unknown, probably reserved (maybe lower 32 bits of blob offset actually)
+	*(int32_t*)(hdr_buf + 0x28) = htole32(0); // TODO Blob offset (could actually be the upper 32 bits)
+	*(uint32_t*)(hdr_buf + 0x2c) = htole32(0); // TODO Blob size
+	*(uint32_t*)(hdr_buf + 0x30) = htole32((17/*s_pack.block_sz_shift*/ << 8) | 3/*s_pack.cmpr_type*/);
+	*(uint32_t*)(hdr_buf + 0x34) = htole32(blk_cnt);
+	*(uint32_t*)(hdr_buf + 0x38) = htole32(cab_cnt);
+	*(int64_t*)(hdr_buf + 0x3c) = htole64(0x18); // 0x54 - 0x3c
+	*(int64_t*)(hdr_buf + 0x44) = htole64((blk_cnt * 4) + 0x14); // 0x58 - 0x44
+	uint32_t flag_size = cab_cnt / 32;
+	if (cab_cnt % 32 != 0) flag_size++;
+	uint32_t flag_vals[flag_size];
+	memset(flag_vals, 0, sizeof(uint32_t) * flag_size);
+	for (i = 0; i < cab_cnt; i++) {
+		flag_vals[i / 32] |= (s_cab[i].flag ? 1 : 0) << i;
+	}
+	if (blk_cnt == flag_vals[0]) {
+		flag_size = 0;
+		*(int64_t*)(hdr_buf + 0x4c) = htole64(-0x18); // 0x34 - 0x4c
+	}
+	else if (cab_cnt == flag_vals[0]) {
+		flag_size = 0;
+		*(int64_t*)(hdr_buf + 0x4c) = htole64(-0x14); // 0x38 - 0x4c
+	}
+	else {
+		*(int64_t*)(hdr_buf + 0x4c) = htole64((blk_cnt * 4) + (cab_cnt * 16) + 0xc); // 0x58 - 0x4c (TODO We store these before the cab names. Hoyo's packer stores them after.)
+		memcpy(hdr_buf + 0x58 + (blk_cnt * 4) + (cab_cnt * 16), flag_vals, sizeof(uint32_t) * flag_size);
+	}
+	size_t cab_name_sz;
+	for (i = 0; i < blk_cnt; i++) {
+		*(uint32_t*)(hdr_buf + 0x54 + (i * 4)) = htole32(blocks[i][0]);
+		if (i + 1 == blk_cnt) {
+			*(uint32_t*)(hdr_buf + 0x20) = htole32(blocks[i][1]);
+		}
+	}
+	int64_t name_off = 0x58 + (4 * blk_cnt) + (16 * cab_cnt) + (4 * flag_size);
+	*(uint32_t*)(hdr_buf + 0x54 + (4 * blk_cnt)) = 0;
+	for (i = 0; i < cab_cnt; i++) {
+		*(uint32_t*)(hdr_buf + 0x58 + (4 * blk_cnt) + (i * 16)) = htole32(s_cab[i].blk_off);
+		*(uint32_t*)(hdr_buf + 0x5c + (4 * blk_cnt) + (i * 16)) = htole32(s_cab[i].blk_sz);
+		*(int64_t*)(hdr_buf + 0x60 + (4 * blk_cnt) + (i * 16)) = htole64(name_off - (0x60 + (4 * blk_cnt) + (i * 16) + (4 * flag_size)));
+		cab_name_sz = strnlen(s_cab[i].name, 256) + 1;
+		strncpy((char*)(hdr_buf + name_off), s_cab[i].name, cab_name_sz);
+		hdr_sz += cab_name_sz;
+		name_off += cab_name_sz;
+	}
+	uint32_t file_size = hdr_sz + written + 0x1c;
+	*(uint32_t*)(hdr_buf + 0x4) = htole32(hdr_sz);
+	*(uint32_t*)(hdr_buf + 0x1c) = htole32(file_size);
+	blb3_encrypt(hdr_buf + 0x1c, hdr_sz, s_pack.key);
+	ssize_t out_sz = fwrite(hdr_buf, 1, hdr_sz + 0x1c, out_fp);
+	ssize_t in_sz;
+	while (written > 0) {
+		in_sz = fread(dec_buf, 1, 0x20000, tmp_blk_fp);
+		out_sz += fwrite(dec_buf, 1, in_sz, out_fp);
+		written -= in_sz;
+	}
+	fclose(tmp_blk_fp);
+	// TODO unlink
+//	i = 0;
+//	if ((out_sz & 3) != 0) {
+//		fwrite(&i, 4 - (out_sz & 3), 1, out_fp);
+//	}
+	fflush(out_fp);
+	return 0;
 }
