@@ -352,11 +352,10 @@ int pack_blb3(const char* in_filename, FILE* out_fp) {
 	}
 	FILE* in_fp2;
 	static char filenameBuf[1024];
-	uint32_t cab_cnt, cab_blk_cnt, hdr_flags;
+	uint32_t cab_cnt, cab_blk_cnt;
 	uint32_t blk_cnt = 0;
 	uint64_t cab_blk_off = 0;
-	uint64_t cab_blk_sz, blk_sz, cmp_buf_off;
-	size_t cmp_buf_sz;
+	uint64_t cab_blk_sz, blk_sz;
 	blb3_pack_serialized_t s_pack;
 	snprintf(filenameBuf, 1024, "%s.hdr", in_filename);
 	in_fp2 = fopen(filenameBuf, "rb");
@@ -370,8 +369,7 @@ int pack_blb3(const char* in_filename, FILE* out_fp) {
 		s_pack.unk0x8 = htobe32(5);
 		s_pack.block_sz_shift = htobe32(17);
 		s_pack.cmpr_type = htobe32(3);
-		//getrandom(s_pack.key, 16, 0);
-		memset(s_pack.key, 0, 16);
+		getrandom(s_pack.key, 16, 0);
 #endif
 	}
 	else {
@@ -440,14 +438,12 @@ int pack_blb3(const char* in_filename, FILE* out_fp) {
 		return -1;
 	}
 	ssize_t written = 0;
-	uint8_t blk_key_buf[18];
-	uint16_t blk_flags;
-	const uint8_t* blk_key = (const uint8_t*) (&blk_key_buf[2]);
 	ssize_t read;
 	unsigned int j = 0;
 	uint32_t blocks[blk_cnt][2]; // compressed, then decompressed sizes for each block
 	uint32_t remaining_sz = 0x20000;
-	uint32_t read_sz, read_off;
+	uint32_t read_sz = 0;
+	uint32_t read_off = 0;
 	blk_sz = 0;
 	cab_blk_off = 0;
 	for (i = 0; i < blk_cnt;) {
