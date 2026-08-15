@@ -264,8 +264,7 @@ int pack_encr(const char* in_filename, FILE* out_fp) {
 	uint32_t cab_cnt, cab_blk_cnt, hdr_flags;
 	uint32_t blk_cnt = 0;
 	uint64_t cab_blk_off = 0;
-	uint64_t cab_blk_sz, blk_sz, cmp_buf_off;
-	size_t cmp_buf_sz;
+	uint64_t cab_blk_sz, blk_sz;
 	uint32_t header[2];
 	snprintf(filenameBuf, 1024, "%s.hdr", in_filename);
 	in_fp2 = fopen(filenameBuf, "rb");
@@ -353,7 +352,8 @@ int pack_encr(const char* in_filename, FILE* out_fp) {
 	unsigned int j = 0;
 	uint32_t blocks[blk_cnt][3]; // compressed, then decompressed sizes, then flags, for each block
 	uint32_t remaining_sz = 0x20000;
-	uint32_t read_sz, read_off;
+	uint32_t read_sz = 0;
+	uint32_t read_off = 0;
 	blk_sz = 0;
 	cab_blk_off = 0;
 	for (i = 0; i < blk_cnt;) {

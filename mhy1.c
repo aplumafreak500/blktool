@@ -19,8 +19,6 @@
 #include "mhy1.h"
 
 /* located in mhy0.c and blk.c */
-extern const uint8_t gf256exp[256];
-extern const uint8_t gf256log[256];
 extern const uint8_t lut[3][16];
 extern const uint8_t key[8];
 extern const uint8_t gf_idx[8];
@@ -463,7 +461,8 @@ int pack_mhy1(const char* in_filename, FILE* out_fp) {
 	ssize_t written = 0;
 	uint8_t blk_key_buf[17];
 	uint32_t remaining_sz = 0x20000;
-	uint32_t read_sz, read_off;
+	uint32_t read_sz = 0;
+	uint32_t read_off = 0;
 	blk_sz = 0;
 	for (i = 0; i < blk_cnt;) {
 		if (remaining_sz <= 0 || remaining_sz >= 0x20000) {
