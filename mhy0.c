@@ -53,7 +53,7 @@ static const uint8_t gf256log[256] = {
 	0x67, 0x4a, 0xed, 0xde, 0xc5, 0x31, 0xfe, 0x18, 0x0d, 0x63, 0x8c, 0x80, 0xc0, 0xf7, 0x70, 0x07
 };
 
-/* routines also used by mhy1 */
+/* routines used by mhy1 and blb3 */
 uint8_t gf256mul(uint8_t a, uint8_t b) {
 	if (a == 0 || b == 0) return 0;
 	return gf256exp[(gf256log[a] + gf256log[b]) % 255];

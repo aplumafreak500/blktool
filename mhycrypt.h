@@ -12,8 +12,13 @@ void aesScrambleKey(uint8_t* key, const uint8_t roundKeys[11][16]);
 void aesUnscrambleKey(uint8_t* key, const uint8_t roundKeys[11][16]);
 void aesScrambleKeyMhy(uint8_t* key, const uint8_t roundKeys[11][16]);
 void aesUnscrambleKeyMhy(uint8_t* key, const uint8_t roundKeys[11][16]);
+void aesScrambleKeyBlb3(uint8_t* key, const uint8_t roundKeys[11][16]);
+void aesUnscrambleKeyBlb3(uint8_t* key, const uint8_t roundKeys[11][16]);
 void aesGetRoundKeys(const uint8_t* key, uint8_t roundKeys[11][16]);
+void aesGetRoundKeysBlb3(const uint8_t* key, uint8_t roundKeys[11][16]);
 void rc4_mhy(const uint8_t* key, size_t keySz, uint8_t* data, size_t dataSz, const uint8_t* opBytes, size_t opBytesSz);
 void rc4_dec_mhy(const uint8_t* key, size_t keySz, uint8_t* data, size_t dataSz, const uint8_t* opBytes, size_t opBytesSz);
+void rc4_blb3(const uint8_t* key, size_t keySz, uint8_t* data, size_t dataSz, const uint8_t* opBytes, size_t opBytesSz);
+void rc4_dec_blb3(const uint8_t* key, size_t keySz, uint8_t* data, size_t dataSz, const uint8_t* opBytes, size_t opBytesSz);
 void genXorpadFromSeed(uint64_t seed, uint8_t*, size_t, unsigned int, unsigned int);
 #endif
