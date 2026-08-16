@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <endian.h>
 #include <sys/random.h>
 #include "lz4.h"
 #include "lz4hc.h"
