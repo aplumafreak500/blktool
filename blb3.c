@@ -2,6 +2,8 @@
 /* ©2026 Alex Pensinger (ArcticLuma113) */
 /* Released under the terms of the MPLv2, which can be viewed at https://mozilla.org/MPL/2.0/ */
 
+/* blb3 (hk4e 4.6+) */
+
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -204,7 +206,7 @@ int extract_blb3(uint8_t* in_buf, const char* filename, uint8_t** _next_blb3) {
 		fprintf(stderr, "Decryption error (header)\n");
 		return ret;
 	}
-#if 1
+#if 0
 	snprintf(filenameBuf, 1024, "%s.hdr_decrypt", filename);
 	file = fopen(filenameBuf, "wb");
 	if (file == NULL) {

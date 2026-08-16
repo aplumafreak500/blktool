@@ -2,6 +2,8 @@
 /* ©2026 Alex Pensinger (ArcticLuma113) */
 /* Released under the terms of the MPLv2, which can be viewed at https://mozilla.org/MPL/2.0/ */
 
+/* mhy0 (hk4e, up to 4.5) */
+
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>

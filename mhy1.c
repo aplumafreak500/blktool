@@ -2,6 +2,8 @@
 /* ©2026 Alex Pensinger (ArcticLuma113) */
 /* Released under the terms of the MPLv2, which can be viewed at https://mozilla.org/MPL/2.0/ */
 
+/* mhy1 (nap) */
+
 /* TODO This is a straight copy of mhy0.c and can/should be merged with it (with some runtime conditionals to select the format) */
 
 #include <stdint.h>
