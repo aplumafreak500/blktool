@@ -356,6 +356,7 @@ int pack_blb3(const char* in_filename, FILE* out_fp) {
 	uint32_t blk_cnt = 0;
 	uint64_t cab_blk_off = 0;
 	uint64_t cab_blk_sz, blk_sz;
+	uint32_t block_sz_full = 0x20000;
 	blb3_pack_serialized_t s_pack;
 	snprintf(filenameBuf, 1024, "%s.hdr", in_filename);
 	in_fp2 = fopen(filenameBuf, "rb");
@@ -370,12 +371,14 @@ int pack_blb3(const char* in_filename, FILE* out_fp) {
 		s_pack.block_sz_shift = htobe32(17);
 		s_pack.cmpr_type = htobe32(3);
 		getrandom(s_pack.key, 16, 0);
+		//block_sz_full = 0x20000;
 #endif
 	}
 	else {
 		fread(&s_pack, 1, sizeof(blb3_pack_serialized_t), in_fp2);
 		fclose(in_fp2);
 		in_fp2 = NULL;
+		//block_sz_full = 1 << s_pack.block_sz_shift;
 	}
 	cab_cnt = be32toh(s_pack.cab_count);
 	if (cab_cnt >= 256) cab_cnt = 256;
@@ -414,8 +417,8 @@ int pack_blb3(const char* in_filename, FILE* out_fp) {
 		s_cab[i].blk_sz = cab_blk_sz;
 		cab_blk_off += cab_blk_sz;
 	}
-	cab_blk_cnt = total_blk_sz / 0x20000;
-	if ((total_blk_sz % 0x20000) != 0) {
+	cab_blk_cnt = total_blk_sz / block_sz_full;
+	if ((total_blk_sz % block_sz_full) != 0) {
 		cab_blk_cnt++;
 	}
 	blk_cnt = cab_blk_cnt;
@@ -426,12 +429,12 @@ int pack_blb3(const char* in_filename, FILE* out_fp) {
 		fprintf(stderr, "Can't open file %s: %s\n", filenameBuf, strerror(errno));
 		return -1;
 	}
-	uint8_t* dec_buf = malloc(0x20000);
+	uint8_t* dec_buf = malloc(block_sz_full);
 	if (dec_buf == NULL) {
 		fprintf(stderr, "Can't allocate block buffer\n");
 		return -1;
 	}
-	uint8_t* cmp_buf = malloc(0x50000);
+	uint8_t* cmp_buf = malloc(block_sz_full * 25 / 10);
 	if (cmp_buf == NULL) {
 		fprintf(stderr, "Can't allocate block compression buffer\n");
 		free(dec_buf);
@@ -441,14 +444,14 @@ int pack_blb3(const char* in_filename, FILE* out_fp) {
 	ssize_t read;
 	unsigned int j = 0;
 	uint32_t blocks[blk_cnt][2]; // compressed, then decompressed sizes for each block
-	uint32_t remaining_sz = 0x20000;
+	uint32_t remaining_sz = block_sz_full;
 	uint32_t read_sz = 0;
 	uint32_t read_off = 0;
 	blk_sz = 0;
 	cab_blk_off = 0;
 	for (i = 0; i < blk_cnt;) {
-		if (remaining_sz <= 0 || remaining_sz >= 0x20000) {
-			remaining_sz = 0x20000;
+		if (remaining_sz <= 0 || remaining_sz >= block_sz_full) {
+			remaining_sz = block_sz_full;
 			blk_sz = 0;
 		}
 		if (s_cab[j].blk_sz - cab_blk_off <= remaining_sz) {
@@ -457,7 +460,7 @@ int pack_blb3(const char* in_filename, FILE* out_fp) {
 			read_sz = s_cab[j].blk_sz - cab_blk_off;
 			cab_blk_off = 0;
 		}
-		else if (remaining_sz > 0 && remaining_sz < 0x20000 && s_cab[j].blk_sz - cab_blk_off > remaining_sz) {
+		else if (remaining_sz > 0 && remaining_sz < block_sz_full && s_cab[j].blk_sz - cab_blk_off > remaining_sz) {
 			cab_blk_off += remaining_sz;
 			blk_sz += remaining_sz;
 			read_sz = remaining_sz;
@@ -467,7 +470,7 @@ int pack_blb3(const char* in_filename, FILE* out_fp) {
 			blk_sz += remaining_sz;
 			cab_blk_off += blk_sz;
 			remaining_sz = 0;
-			read_sz = 0x20000;
+			read_sz = block_sz_full;
 		}
 		fread(dec_buf + read_off, 1, read_sz, in_fp[j]);
 		if (cab_blk_off <= 0) {
@@ -475,13 +478,13 @@ int pack_blb3(const char* in_filename, FILE* out_fp) {
 			j++;
 		}
 		if (!(j >= cab_cnt)) {
-			if (remaining_sz > 0 && remaining_sz < 0x20000) {
+			if (remaining_sz > 0 && remaining_sz < block_sz_full) {
 				read_off += read_sz;
 				continue;
 			}
 		}
 		//read = LZ4_compress_default((const char*) dec_buf, (char*) (cmp_buf + 12), blk_sz, 0x4fff4);
-		read = LZ4_compress_HC((const char*) dec_buf, (char*) cmp_buf, blk_sz, 0x50000, 12);
+		read = LZ4_compress_HC((const char*) dec_buf, (char*) cmp_buf, blk_sz, block_sz_full * 25 / 10, 12);
 		if (read < 0) {
 			fprintf(stderr, "Can't compress block %d\n", i);
 			return -1;
@@ -532,19 +535,22 @@ int pack_blb3(const char* in_filename, FILE* out_fp) {
 		*(int64_t*)(hdr_buf + 0x4c) = htole64((blk_cnt * 4) + (cab_cnt * 16) + 0xc); // 0x58 - 0x4c (TODO We store these before the cab names. Hoyo's packer stores them after.)
 		memcpy(hdr_buf + 0x58 + (blk_cnt * 4) + (cab_cnt * 16), flag_vals, sizeof(uint32_t) * flag_size);
 	}
-	size_t cab_name_sz;
+	hdr_sz += sizeof(uint32_t) * flag_size;
+	total_blk_sz = 0;
 	for (i = 0; i < blk_cnt; i++) {
-		*(uint32_t*)(hdr_buf + 0x54 + (i * 4)) = htole32(blocks[i][0]);
+		*(uint32_t*)(hdr_buf + 0x54 + (i * 4)) = htole32(blocks[i][0] + total_blk_sz);
+		total_blk_sz += blocks[i][0];
 		if (i + 1 == blk_cnt) {
 			*(uint32_t*)(hdr_buf + 0x20) = htole32(blocks[i][1]);
 		}
 	}
 	int64_t name_off = 0x58 + (4 * blk_cnt) + (16 * cab_cnt) + (4 * flag_size);
+	size_t cab_name_sz;
 	*(uint32_t*)(hdr_buf + 0x54 + (4 * blk_cnt)) = 0;
 	for (i = 0; i < cab_cnt; i++) {
 		*(uint32_t*)(hdr_buf + 0x58 + (4 * blk_cnt) + (i * 16)) = htole32(s_cab[i].blk_off);
 		*(uint32_t*)(hdr_buf + 0x5c + (4 * blk_cnt) + (i * 16)) = htole32(s_cab[i].blk_sz);
-		*(int64_t*)(hdr_buf + 0x60 + (4 * blk_cnt) + (i * 16)) = htole64(name_off - (0x60 + (4 * blk_cnt) + (i * 16) + (4 * flag_size)));
+		*(int64_t*)(hdr_buf + 0x60 + (4 * blk_cnt) + (i * 16)) = htole64(name_off - (0x60 + (4 * blk_cnt) + (i * 16)));
 		cab_name_sz = strnlen(s_cab[i].name, 256) + 1;
 		strncpy((char*)(hdr_buf + name_off), s_cab[i].name, cab_name_sz);
 		hdr_sz += cab_name_sz;
@@ -557,7 +563,7 @@ int pack_blb3(const char* in_filename, FILE* out_fp) {
 	ssize_t out_sz = fwrite(hdr_buf, 1, hdr_sz + 0x1c, out_fp);
 	ssize_t in_sz;
 	while (written > 0) {
-		in_sz = fread(dec_buf, 1, 0x20000, tmp_blk_fp);
+		in_sz = fread(dec_buf, 1, block_sz_full, tmp_blk_fp);
 		out_sz += fwrite(dec_buf, 1, in_sz, out_fp);
 		written -= in_sz;
 	}
